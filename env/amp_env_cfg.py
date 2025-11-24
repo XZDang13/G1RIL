@@ -61,15 +61,19 @@ class G1AMPEnvCfg(DirectRLEnvCfg):
 
     decimation = 4
 
-    observation_space = 7+23+23
-    motion_space = 30 * 2
+    observation_space = 89
+    motion_space = 89
+    motion_buffer_size = 2
+    motion_observation_space = motion_space * motion_buffer_size
     action_space = 23
     state_space = 0
+
+    reference_body = "pelvis"
 
     action_scale = 0.25
 
     early_termination = True
-    termination_height = 0.5
+    termination_height = 0.25
 
     training = False
 
@@ -100,7 +104,7 @@ class G1AMPEnvCfg(DirectRLEnvCfg):
     )
 
     scene:InteractiveSceneCfg = InteractiveSceneCfg(
-        num_envs=1, env_spacing=4.0, replicate_physics=True
+        num_envs=4096, env_spacing=4.0, replicate_physics=True
     )
 
     robot:ArticulationCfg = G1_CFG.replace(prim_path="/World/envs/env_.*/Robot")

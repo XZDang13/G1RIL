@@ -1,55 +1,72 @@
-import torch
+# Copyright (c) 2022-2025, The Isaac Lab Project Developers (https://github.com/isaac-sim/IsaacLab/blob/main/CONTRIBUTORS.md).
+# All rights reserved.
+#
+# SPDX-License-Identifier: BSD-3-Clause
+
 import numpy as np
+import os
+import torch
 from typing import Optional
 
-def quat_xyzw_to_wxyz(q):
-    # q shape: (..., 4) in xyzw order
-    # return same shape in wxyz order
-    return torch.stack([q[..., 3], q[..., 0], q[..., 1], q[..., 2]], dim=-1)
 
-mujoco_to_isaac_idx = [
-    0,   # left_hip_pitch_joint
-    6,   # right_hip_pitch_joint
-    12,  # waist_yaw_joint
-    1,   # left_hip_roll_joint
-    7,   # right_hip_roll_joint
-    13,  # left_shoulder_pitch_joint
-    18,  # right_shoulder_pitch_joint
-    2,   # left_hip_yaw_joint
-    8,   # right_hip_yaw_joint
-    14,  # left_shoulder_roll_joint
-    19,  # right_shoulder_roll_joint
-    3,   # left_knee_joint
-    9,   # right_knee_joint
-    15,  # left_shoulder_yaw_joint
-    20,  # right_shoulder_yaw_joint
-    4,   # left_ankle_pitch_joint
-    10,  # right_ankle_pitch_joint
-    16,  # left_elbow_joint
-    21,  # right_elbow_joint
-    5,   # left_ankle_roll_joint
-    11,  # right_ankle_roll_joint
-    17,  # left_wrist_roll_joint
-    22,  # right_wrist_roll_joint
-]
+class MotionLoader:
+    """
+    Helper class to load and sample motion data from NumPy-file format.
+    """
 
+    def __init__(self, motion_file: str, device: torch.device) -> None:
+        """Load a motion file and initialize the internal variables.
 
-class MotionDataset:
-    def __init__(self, data_path):
-        data = np.load(data_path, allow_pickle=True)
-        self.fps = data["fps"]
-        self.root_pos = torch.from_numpy(data["root_pos"]).float()
-        root_rot = torch.from_numpy(data["root_rot"]).float()
-        joint_pos = torch.from_numpy(data["dof_pos"]).float()
+        Args:
+            motion_file: Motion file path to load.
+            device: The device to which to load the data.
 
-        self.root_rot = quat_xyzw_to_wxyz(root_rot)
-        self.joint_pos = joint_pos[:, mujoco_to_isaac_idx]
+        Raises:
+            AssertionError: If the specified motion file doesn't exist.
+        """
+        assert os.path.isfile(motion_file), f"Invalid file path: {motion_file}"
+        data = np.load(motion_file)
 
-        self.num_frames = self.joint_pos.shape[0]
+        self.device = device
+        self._dof_names = data["dof_names"].tolist()
+        self._body_names = data["body_names"].tolist()
 
-        self.dt = 1.0 / self.fps
+        self.dof_positions = torch.tensor(data["dof_positions"], dtype=torch.float32, device=self.device)
+        self.dof_velocities = torch.tensor(data["dof_velocities"], dtype=torch.float32, device=self.device)
+        self.body_positions = torch.tensor(data["body_positions"], dtype=torch.float32, device=self.device)
+        self.body_rotations = torch.tensor(data["body_rotations"], dtype=torch.float32, device=self.device)
+        self.body_linear_velocities = torch.tensor(
+            data["body_linear_velocities"], dtype=torch.float32, device=self.device
+        )
+        self.body_angular_velocities = torch.tensor(
+            data["body_angular_velocities"], dtype=torch.float32, device=self.device
+        )
+
+        self.dt = 1.0 / data["fps"]
+        self.num_frames = self.dof_positions.shape[0]
         self.duration = self.dt * (self.num_frames - 1)
-    
+        print(f"Motion loaded ({motion_file}): duration: {self.duration} sec, frames: {self.num_frames}")
+
+    @property
+    def dof_names(self) -> list[str]:
+        """Skeleton DOF names."""
+        return self._dof_names
+
+    @property
+    def body_names(self) -> list[str]:
+        """Skeleton rigid body names."""
+        return self._body_names
+
+    @property
+    def num_dofs(self) -> int:
+        """Number of skeleton's DOFs."""
+        return len(self._dof_names)
+
+    @property
+    def num_bodies(self) -> int:
+        """Number of skeleton's rigid bodies."""
+        return len(self._body_names)
+
     def _interpolate(
         self,
         a: torch.Tensor,
@@ -80,7 +97,7 @@ class MotionDataset:
         if a.ndim >= 3:
             blend = blend.unsqueeze(-1)
         return (1.0 - blend) * a + blend * b
-    
+
     def _slerp(
         self,
         q0: torch.Tensor,
@@ -140,7 +157,7 @@ class MotionDataset:
         new_q = torch.where(torch.abs(sin_half_theta) < 0.001, 0.5 * q0 + 0.5 * q1, new_q)
         new_q = torch.where(torch.abs(cos_half_theta) >= 1, q0, new_q)
         return new_q
-    
+
     def _compute_frame_blend(self, times: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         """Compute the indexes of the first and second values, as well as the blending time
         to interpolate between them and the given times.
@@ -157,7 +174,7 @@ class MotionDataset:
         index_1 = np.minimum(index_0 + 1, self.num_frames - 1)
         blend = ((times - index_0 * self.dt) / self.dt).round(decimals=5)
         return index_0, index_1, blend
-    
+
     def sample_times(self, num_samples: int, duration: float | None = None) -> np.ndarray:
         """Sample random motion times uniformly.
 
@@ -177,10 +194,10 @@ class MotionDataset:
             duration <= self.duration
         ), f"The specified duration ({duration}) is longer than the motion duration ({self.duration})"
         return duration * np.random.uniform(low=0.0, high=1.0, size=num_samples)
-    
+
     def sample(
         self, num_samples: int, times: Optional[np.ndarray] = None, duration: float | None = None
-    ) -> dict[str, torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """Sample motion data.
 
         Args:
@@ -198,31 +215,49 @@ class MotionDataset:
         """
         times = self.sample_times(num_samples, duration) if times is None else times
         index_0, index_1, blend = self._compute_frame_blend(times)
-        blend = torch.tensor(blend, dtype=torch.float32)
+        blend = torch.tensor(blend, dtype=torch.float32, device=self.device)
 
-        root_pos = self._interpolate(
-            a=self.root_pos,
-            start=index_0,
-            end=index_1,
-            blend=blend,
-        )
-        root_rot = self._slerp(
-            q0=self.root_rot,
-            start=index_0,
-            end=index_1,
-            blend=blend,
-        )
-        joint_pos = self._interpolate(
-            a=self.joint_pos,
-            start=index_0,
-            end=index_1,   
-            blend=blend,
+        return (
+            self._interpolate(self.dof_positions, blend=blend, start=index_0, end=index_1),
+            self._interpolate(self.dof_velocities, blend=blend, start=index_0, end=index_1),
+            self._interpolate(self.body_positions, blend=blend, start=index_0, end=index_1),
+            self._slerp(self.body_rotations, blend=blend, start=index_0, end=index_1),
+            self._interpolate(self.body_linear_velocities, blend=blend, start=index_0, end=index_1),
+            self._interpolate(self.body_angular_velocities, blend=blend, start=index_0, end=index_1),
         )
 
-        sampled_states = {
-            "root_pos": root_pos,
-            "root_rot": root_rot,
-            "joint_pos": joint_pos,
-        }
+    def get_dof_index(self, dof_names: list[str]) -> list[int]:
+        """Get skeleton DOFs indexes by DOFs names.
 
-        return sampled_states
+        Args:
+            dof_names: List of DOFs names.
+
+        Raises:
+            AssertionError: If the specified DOFs name doesn't exist.
+
+        Returns:
+            List of DOFs indexes.
+        """
+        indexes = []
+        for name in dof_names:
+            assert name in self._dof_names, f"The specified DOF name ({name}) doesn't exist: {self._dof_names}"
+            indexes.append(self._dof_names.index(name))
+        return indexes
+
+    def get_body_index(self, body_names: list[str]) -> list[int]:
+        """Get skeleton body indexes by body names.
+
+        Args:
+            dof_names: List of body names.
+
+        Raises:
+            AssertionError: If the specified body name doesn't exist.
+
+        Returns:
+            List of body indexes.
+        """
+        indexes = []
+        for name in body_names:
+            assert name in self._body_names, f"The specified body name ({name}) doesn't exist: {self._body_names}"
+            indexes.append(self._body_names.index(name))
+        return indexes

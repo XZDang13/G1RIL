@@ -63,6 +63,8 @@ class Evaluator:
         for i in range(1000):
             obs = process_obs(obs)
             action = self.get_action(obs, True)
+            #print(action)
+            #action = torch.zeros_like(action)  # for testing, use zero action
             next_obs, task_reward, terminate, timeout, info = self.env.step(action)
 
             length += 1

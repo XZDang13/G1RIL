@@ -35,8 +35,10 @@ class Trainer:
 
         self.env = gymnasium.make(self.env_name, cfg=self.cfg)
 
+        print(self.cfg.scene.num_envs)
+
         obs_dim = self.cfg.observation_space
-        motion_dim = self.cfg.motion_space
+        motion_dim = self.cfg.motion_observation_space
         action_dim = self.cfg.action_space
 
         self.device = self.env.unwrapped.device
@@ -318,7 +320,7 @@ class Trainer:
 
     def train(self):
         obs, _ = self.env.reset()
-        for epoch in trange(1000):
+        for epoch in trange(500):
             obs = self.rollout(obs)
             self.update()
         self.env.close()

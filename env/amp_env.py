@@ -4,8 +4,9 @@ import torch
 import isaaclab.sim as sim_utils
 from isaaclab.assets import Articulation
 from isaaclab.envs import DirectRLEnv
+from isaaclab.utils.math import quat_apply
 
-from .motion_dataset import MotionDataset
+from .motion_dataset import MotionLoader
 from .amp_env_cfg import G1WalkEnvCfg
 
 class G1WalkEnv(DirectRLEnv):
@@ -15,12 +16,42 @@ class G1WalkEnv(DirectRLEnv):
         super().__init__(cfg, render_mode, **kwargs)
 
         self.actions = torch.zeros(self.num_envs, 23, device=self.device)
-        self.previous_motion_obs = torch.zeros(self.num_envs, 3+4+23, device=self.device)
 
         dof_lower_limits = self.robot.data.soft_joint_pos_limits[0, :, 0]
         dof_upper_limits = self.robot.data.soft_joint_pos_limits[0, :, 1]
         self.action_offset = 0.5 * (dof_upper_limits + dof_lower_limits)
         self.action_scale = dof_upper_limits - dof_lower_limits
+
+        key_body_names = [ 
+            "left_shoulder_pitch_link",
+            "right_shoulder_pitch_link",
+            "left_elbow_link",
+            "right_elbow_link",
+            "right_hip_yaw_link",
+            "left_hip_yaw_link",
+            "right_rubber_hand",
+            "left_rubber_hand",
+            "right_ankle_roll_link",
+            "left_ankle_roll_link"
+        ]
+
+        self.motion_loader = MotionLoader(motion_file="env/motion_data/walk.npz", device=self.device)
+
+        self.ref_body_index = self.robot.data.body_names.index(self.cfg.reference_body)
+        self.key_body_indexes = [self.robot.data.body_names.index(name) for name in key_body_names]
+        self.motion_dof_indexes = self.motion_loader.get_dof_index(self.robot.data.joint_names)
+        self.motion_ref_body_index = self.motion_loader.get_body_index([self.cfg.reference_body])[0]
+        self.motion_key_body_indexes = self.motion_loader.get_body_index(key_body_names)
+
+        self.motion_buffer = torch.zeros(
+            (
+                self.num_envs,
+                self.cfg.motion_buffer_size,
+                self.cfg.motion_space
+            ),
+            device=self.device
+        )
+
 
     def _setup_scene(self):
         self.robot = Articulation(self.cfg.robot)
@@ -36,45 +67,33 @@ class G1WalkEnv(DirectRLEnv):
         light_cfg = sim_utils.DomeLightCfg(intensity=2000.0, color=(0.75, 0.75, 0.75))
         light_cfg.func("/World/Light", light_cfg)
 
-        self.expert_motion_data = MotionDataset(self.cfg.expert_motion_file)
-
-
     def _pre_physics_step(self, actions: torch.Tensor):
         self.actions = actions.clone()
 
     def _apply_action(self):
-        target = self.action_offset + self.action_scale * self.actions
-        self.robot.set_joint_position_target(target)
+        target_positions = self.action_offset + self.action_scale * self.actions
+        self.robot.set_joint_position_target(target_positions)
 
     def _get_observations(self):
         self.previous_actions = self.actions.clone()
 
-        root_pos = self.robot.data.root_state_w[:, :3] - self.scene.env_origins
-        root_quat = self.robot.data.root_state_w[:, 3:7]
-        joint_pos = self.robot.data.joint_pos - self.robot.data.default_joint_pos # (num_envs, 23)
-        joint_vel = self.robot.data.joint_vel               # (num_envs, 23)
-
-
-        policy_obs = torch.cat([
-            root_pos,
-            root_quat,
-            joint_pos,
-            joint_vel
-        ], dim=-1)
-
-        current_motion_obs = torch.cat([
-            root_pos,
-            root_quat,
-            joint_pos
-        ], dim=-1)
-
-        motion_obs = torch.cat(
-            [current_motion_obs, self.previous_motion_obs], dim=-1
+        obs = compute_obs(
+            self.robot.data.joint_pos,
+            self.robot.data.joint_vel,
+            self.robot.data.body_pos_w[:, self.ref_body_index],
+            self.robot.data.body_quat_w[:, self.ref_body_index],
+            self.robot.data.body_lin_vel_w[:, self.ref_body_index],
+            self.robot.data.body_ang_vel_w[:, self.ref_body_index],
+            self.robot.data.body_pos_w[:, self.key_body_indexes],
         )
 
-        self.previous_motion_obs = current_motion_obs.clone()
+        for i in reversed(range(self.cfg.motion_buffer_size - 1)):
+            self.motion_buffer[:, i + 1] = self.motion_buffer[:, i]
+        # build AMP observation
+        self.motion_buffer[:, 0] = obs.clone()
+        motion_obs = self.motion_buffer.view(-1, self.cfg.motion_observation_space)
 
-        return {"policy": policy_obs, "motion": motion_obs}
+        return {"policy": obs, "motion": motion_obs}
     
     def _get_rewards(self) -> torch.Tensor:
         return torch.ones(self.num_envs, device=self.device)
@@ -82,7 +101,7 @@ class G1WalkEnv(DirectRLEnv):
     def _get_dones(self) -> tuple[torch.Tensor, torch.Tensor]:
         time_out = self.episode_length_buf >= self.max_episode_length - 1
         base_height = self.robot.data.root_state_w[:, 2]
-        terminate = base_height < 0.5
+        terminate = base_height < self.cfg.termination_height
         #terminate = base_height < 0
         return terminate, time_out
     
@@ -91,53 +110,101 @@ class G1WalkEnv(DirectRLEnv):
             env_ids = self.robot._ALL_INDICES
         self.robot.reset(env_ids)
         super()._reset_idx(env_ids)
-        if len(env_ids) == self.num_envs:
-            # Spread out the resets to avoid spikes in training when many environments reset at a similar time
-            self.episode_length_buf[:] = torch.randint_like(self.episode_length_buf, high=int(self.max_episode_length))
-        self.actions[env_ids] = 0.0
-
-        samples = self.expert_motion_data.sample(num_samples=len(env_ids))
-
-        root_state = self.robot.data.root_state_w[env_ids].clone()
         
-        root_pos = samples["root_pos"].to(self.device) + self.scene.env_origins[env_ids]
-        root_rot = samples["root_rot"].to(self.device)
-        root_state[:, :3] = root_pos
-        root_state[:, 3:7] = root_rot
+        self.actions[env_ids] = 0.0
+        num_samples = len(env_ids)
+        times = self.motion_loader.sample_times(num_samples)
 
-        joint_pos = samples["joint_pos"].to(self.device)
-        joint_vel = torch.zeros_like(joint_pos)
+        (
+            dof_positions,
+            dof_velocities,
+            body_positions,
+            body_rotations,
+            body_linear_velocities,
+            body_angular_velocities,
+        ) = self.motion_loader.sample(num_samples=num_samples, times=times)
+
+        motion_reference_body_index = self.motion_loader.get_body_index([self.cfg.reference_body])[0]
+        root_state = self.robot.data.default_root_state[env_ids].clone()
+        
+        root_state[:, 0:3] = body_positions[:, motion_reference_body_index] + self.scene.env_origins[env_ids]
+        root_state[:, 2] += 0.15  # lift the humanoid slightly to avoid collisions with the ground
+        root_state[:, 3:7] = body_rotations[:, motion_reference_body_index]
+        root_state[:, 7:10] = body_linear_velocities[:, motion_reference_body_index]
+        root_state[:, 10:13] = body_angular_velocities[:, motion_reference_body_index]
+        # get DOFs state
+        dof_pos = dof_positions[:, self.motion_dof_indexes]
+        dof_vel = dof_velocities[:, self.motion_dof_indexes]
 
         self.robot.write_root_link_pose_to_sim(root_state[:, :7], env_ids)
         self.robot.write_root_com_velocity_to_sim(root_state[:, 7:], env_ids)
-        self.robot.write_joint_state_to_sim(joint_pos, joint_vel, None, env_ids)
+        self.robot.write_joint_state_to_sim(dof_pos, dof_vel, None, env_ids)
 
-        self.previous_motion_obs[env_ids] = torch.cat([
-            root_pos,
-            root_rot,
-            joint_pos
-        ], dim=-1)
+        motion_observations = self.collect_expert_motion(num_samples, times)
+        self.motion_buffer[env_ids] = motion_observations.view(num_samples, self.cfg.motion_buffer_size, -1)
 
-        self.target_joint_pos = joint_pos
-
-    def collect_expert_motion(self, num_samples: int):
-        current_times = self.expert_motion_data.sample_times(num_samples)
+        self.target_positions = self.robot.data.joint_pos.clone()
+    
+    def collect_expert_motion(self, num_samples: int, current_times: np.ndarray | None = None):
+        if current_times is None:
+            current_times = self.motion_loader.sample_times(num_samples)
         times = (
             np.expand_dims(current_times, axis=-1)
-            - self.expert_motion_data.dt * np.arange(0, 2)
+            - self.motion_loader.dt * np.arange(0, self.cfg.motion_buffer_size)
         ).flatten()
 
-        samples = self.expert_motion_data.sample(num_samples, times=times)
+        (
+            dof_positions,
+            dof_velocities,
+            body_positions,
+            body_rotations,
+            body_linear_velocities,
+            body_angular_velocities,
+        ) = self.motion_loader.sample(num_samples=num_samples, times=times)
 
-        root_pos = samples["root_pos"]
-        root_rot = samples["root_rot"]
-        joint_pos = samples["joint_pos"]
+        motion_obs = compute_obs(
+            dof_positions[:, self.motion_dof_indexes],
+            dof_velocities[:, self.motion_dof_indexes],
+            body_positions[:, self.motion_ref_body_index],
+            body_rotations[:, self.motion_ref_body_index],
+            body_linear_velocities[:, self.motion_ref_body_index],
+            body_angular_velocities[:, self.motion_ref_body_index],
+            body_positions[:, self.motion_key_body_indexes],
+        )
 
-        motion_obs = torch.cat([
-            root_pos,
-            root_rot,
-            joint_pos
-        ], dim=-1)
+        return motion_obs.view(-1, self.cfg.motion_observation_space)
 
-        return motion_obs.view(-1, 2*(3+4+23))
+@torch.jit.script
+def quaternion_to_tangent_and_normal(q: torch.Tensor) -> torch.Tensor:
+    ref_tangent = torch.zeros_like(q[..., :3])
+    ref_normal = torch.zeros_like(q[..., :3])
+    ref_tangent[..., 0] = 1
+    ref_normal[..., -1] = 1
+    tangent = quat_apply(q, ref_tangent)
+    normal = quat_apply(q, ref_normal)
+    return torch.cat([tangent, normal], dim=len(tangent.shape) - 1)
 
+@torch.jit.script
+def compute_obs(
+    dof_positions: torch.Tensor,
+    dof_velocities: torch.Tensor,
+    root_positions: torch.Tensor,
+    root_rotations: torch.Tensor,
+    root_linear_velocities: torch.Tensor,
+    root_angular_velocities: torch.Tensor,
+    key_body_positions: torch.Tensor,
+) -> torch.Tensor:
+    obs = torch.cat(
+        (
+            dof_positions,
+            dof_velocities,
+            root_positions[:, 2:3],  # root body height
+            quaternion_to_tangent_and_normal(root_rotations),
+            root_linear_velocities,
+            root_angular_velocities,
+            (key_body_positions - root_positions.unsqueeze(-2)).view(key_body_positions.shape[0], -1),
+        ),
+        dim=-1,
+    )
+
+    return obs
