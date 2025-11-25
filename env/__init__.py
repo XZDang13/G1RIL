@@ -1,6 +1,6 @@
 import gymnasium
 
 gymnasium.register(
-    id="AMPWalk-v0",
-    entry_point=f"{__name__}.amp_env:G1WalkEnv"
+    id="G1AMP-v0",
+    entry_point=f"{__name__}.amp_env:G1AMPEnv"
 )

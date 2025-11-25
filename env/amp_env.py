@@ -8,9 +8,10 @@ from isaaclab.utils.math import quat_apply
 
 from .motion_dataset import MotionLoader
 from .amp_env_cfg import G1WalkEnvCfg
+from .amp_env_cfg import G1DanceEnvCfg
 
-class G1WalkEnv(DirectRLEnv):
-    cfg:G1WalkEnvCfg
+class G1AMPEnv(DirectRLEnv):
+    cfg:G1WalkEnvCfg | G1DanceEnvCfg
 
     def __init__(self, cfg, render_mode = None, **kwargs):
         super().__init__(cfg, render_mode, **kwargs)
@@ -35,7 +36,7 @@ class G1WalkEnv(DirectRLEnv):
             "left_ankle_roll_link"
         ]
 
-        self.motion_loader = MotionLoader(motion_file="env/motion_data/walk.npz", device=self.device)
+        self.motion_loader = MotionLoader(motion_file=self.cfg.expert_motion_file, device=self.device)
 
         self.ref_body_index = self.robot.data.body_names.index(self.cfg.reference_body)
         self.key_body_indexes = [self.robot.data.body_names.index(name) for name in key_body_names]
@@ -148,6 +149,7 @@ class G1WalkEnv(DirectRLEnv):
     def collect_expert_motion(self, num_samples: int, current_times: np.ndarray | None = None):
         if current_times is None:
             current_times = self.motion_loader.sample_times(num_samples)
+            
         times = (
             np.expand_dims(current_times, axis=-1)
             - self.motion_loader.dt * np.arange(0, self.cfg.motion_buffer_size)

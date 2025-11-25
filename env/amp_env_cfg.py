@@ -70,10 +70,10 @@ class G1AMPEnvCfg(DirectRLEnvCfg):
 
     reference_body = "pelvis"
 
-    action_scale = 0.25
+    expert_motion_file = None
 
     early_termination = True
-    termination_height = 0.25
+    termination_height = 0.5
 
     training = False
 

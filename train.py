@@ -26,12 +26,12 @@ from RLAlg.alg.gan import GAN
 from RLAlg.logger import WandbLogger
 
 from model import Actor, Critic, Discriminator
-from env.amp_env_cfg import G1WalkEnvCfg
+from env.amp_env_cfg import G1WalkEnvCfg, G1DanceEnvCfg
 
 class Trainer:
     def __init__(self):
-        self.cfg = G1WalkEnvCfg()
-        self.env_name = "AMPWalk-v0"
+        self.cfg = G1DanceEnvCfg()
+        self.env_name = "G1AMP-v0"
 
         self.env = gymnasium.make(self.env_name, cfg=self.cfg)
 
@@ -114,7 +114,7 @@ class Trainer:
         self.agent_motion_buffer.create_storage_space("motion_observations", (motion_dim,))
 
         self.global_step = 0   
-        WandbLogger.init_project("AMP", f"G1_Walk")
+        WandbLogger.init_project("AMP", f"G1_Dance")
         
     @torch.no_grad()
     def get_action(self, obs_batch:torch.Tensor, determine:bool=False):
@@ -268,10 +268,9 @@ class Trainer:
                 expert_motion_batch = self.motion_normalizer(expert_motion_batch, True)
                 agent_motion_batch = self.motion_normalizer(agent_motion_batch, True)
 
-                d_loss_dict = GAN.compute_soft_bce_loss(self.discriminator,
+                d_loss_dict = GAN.compute_bce_loss(self.discriminator,
                                                 expert_motion_batch,
                                                 agent_motion_batch,
-                                                label_smoothing=0.,
                                                 r1_gamma=5.0)
                 
                 d_loss = d_loss_dict["loss"]
@@ -320,7 +319,7 @@ class Trainer:
 
     def train(self):
         obs, _ = self.env.reset()
-        for epoch in trange(500):
+        for epoch in trange(2000):
             obs = self.rollout(obs)
             self.update()
         self.env.close()
