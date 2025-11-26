@@ -46,6 +46,7 @@ class Trainer:
         self.actor = Actor(obs_dim, action_dim).to(self.device)
         self.critic = Critic(obs_dim).to(self.device)
         self.discriminator = Discriminator(motion_dim).to(self.device)
+        self.obs_normalizer = Normalizer((obs_dim,)).to(self.device)
         self.motion_normalizer = Normalizer((motion_dim,)).to(self.device)
 
         self.ac_optimizer = torch.optim.Adam(
@@ -114,10 +115,11 @@ class Trainer:
         self.agent_motion_buffer.create_storage_space("motion_observations", (motion_dim,))
 
         self.global_step = 0   
-        WandbLogger.init_project("AMP", f"G1_Dance")
+        WandbLogger.init_project("AMP", f"G1_Walk")
         
     @torch.no_grad()
     def get_action(self, obs_batch:torch.Tensor, determine:bool=False):
+        obs_batch = self.obs_normalizer(obs_batch)
         actor_step:StochasticContinuousPolicyStep = self.actor(obs_batch)
         action = actor_step.action
         log_prob = actor_step.log_prob
@@ -211,7 +213,7 @@ class Trainer:
         discriminator_fake_loss_buffer = []
         discriminator_gradient_penalty_buffer = []
 
-        for _ in range(5):
+        for i in range(5):
             for batch in self.rollout_buffer.sample_batchs(self.batch_keys, 4096*10):
                 obs_batch = batch["observations"].to(self.device)
                 action_batch = batch["actions"].to(self.device)
@@ -219,6 +221,8 @@ class Trainer:
                 value_batch = batch["values"].to(self.device)
                 return_batch = batch["returns"].to(self.device)
                 advantage_batch = batch["advantages"].to(self.device)
+
+                obs_batch = self.obs_normalizer(obs_batch, i==0)
 
                 policy_loss_dict = PPO.compute_policy_loss(self.actor,
                                                            log_prob_batch,
@@ -240,7 +244,7 @@ class Trainer:
                 
                 value_loss = value_loss_dict["loss"]
 
-                ac_loss = policy_loss - entropy * 0.001 + value_loss * 0.5
+                ac_loss = policy_loss - entropy * 0.001 + value_loss * 2.5
 
                 self.ac_optimizer.zero_grad(set_to_none=True)
                 ac_loss.backward()
@@ -278,7 +282,7 @@ class Trainer:
                 d_loss_fake = d_loss_dict["loss_fake"]
                 d_loss_gp = d_loss_dict["gradient_penalty"]
 
-                weighted_d_loss = d_loss
+                weighted_d_loss = d_loss * 5.0
 
                 self.d_optimizer.zero_grad(set_to_none=True)
                 weighted_d_loss.backward()
@@ -319,13 +323,13 @@ class Trainer:
 
     def train(self):
         obs, _ = self.env.reset()
-        for epoch in trange(2000):
+        for epoch in trange(1000):
             obs = self.rollout(obs)
             self.update()
         self.env.close()
 
         torch.save(
-            [self.actor.state_dict(), self.critic.state_dict()],
+            [self.obs_normalizer.state_dict(), self.actor.state_dict(), self.critic.state_dict()],
             "weight.pth"
         )
 

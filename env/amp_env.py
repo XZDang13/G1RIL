@@ -23,17 +23,20 @@ class G1AMPEnv(DirectRLEnv):
         self.action_offset = 0.5 * (dof_upper_limits + dof_lower_limits)
         self.action_scale = dof_upper_limits - dof_lower_limits
 
-        key_body_names = [ 
+        key_body_names = [
+            "torso_link",
             "left_shoulder_pitch_link",
             "right_shoulder_pitch_link",
             "left_elbow_link",
             "right_elbow_link",
-            "right_hip_yaw_link",
             "left_hip_yaw_link",
-            "right_rubber_hand",
+            "right_hip_yaw_link",
             "left_rubber_hand",
+            "right_rubber_hand",
+            "left_knee_link",
+            "right_knee_link",
+            "left_ankle_roll_link",
             "right_ankle_roll_link",
-            "left_ankle_roll_link"
         ]
 
         self.motion_loader = MotionLoader(motion_file=self.cfg.expert_motion_file, device=self.device)
@@ -129,7 +132,7 @@ class G1AMPEnv(DirectRLEnv):
         root_state = self.robot.data.default_root_state[env_ids].clone()
         
         root_state[:, 0:3] = body_positions[:, motion_reference_body_index] + self.scene.env_origins[env_ids]
-        root_state[:, 2] += 0.15  # lift the humanoid slightly to avoid collisions with the ground
+        root_state[:, 2] += 0.05  # lift the humanoid slightly to avoid collisions with the ground
         root_state[:, 3:7] = body_rotations[:, motion_reference_body_index]
         root_state[:, 7:10] = body_linear_velocities[:, motion_reference_body_index]
         root_state[:, 10:13] = body_angular_velocities[:, motion_reference_body_index]

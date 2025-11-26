@@ -19,6 +19,7 @@ import torch
 import numpy as np
 
 from RLAlg.nn.steps import StochasticContinuousPolicyStep, ValueStep
+from RLAlg.normalizer import Normalizer
 
 from env.amp_env_cfg import G1WalkEnvCfg, G1DanceEnvCfg
 from model import Actor
@@ -41,14 +42,18 @@ class Evaluator:
 
         self.device = self.env.unwrapped.device
 
+        self.obs_normalizer = Normalizer((obs_dim,)).to(self.device)
         self.actor = Actor(obs_dim, action_dim).to(self.device)
 
-        actor_weights, _ = torch.load("weight.pth")
+        normalizer_weights, actor_weights, _ = torch.load("weight.pth")
+        self.obs_normalizer.load_state_dict(normalizer_weights)
         self.actor.load_state_dict(actor_weights)
+        self.obs_normalizer.eval()
         self.actor.eval()
 
     @torch.no_grad()
     def get_action(self, obs_batch:torch.Tensor, determine:bool=False):
+        obs_batch = self.obs_normalizer(obs_batch)
         actor_step:StochasticContinuousPolicyStep = self.actor(obs_batch)
         action = actor_step.action
         if determine:
