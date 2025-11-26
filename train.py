@@ -56,7 +56,7 @@ class Trainer:
                  {'params': self.critic.parameters(),
                  "name": "critic"},
             ],
-            lr=5e-5
+            lr=3e-4
         )
 
         self.d_optimizer = torch.optim.Adam(
@@ -65,11 +65,10 @@ class Trainer:
                  "weight_decay":1e-4,
                  "name": "discriminator"},
                 {'params': self.discriminator.head.parameters(),
-                 "weight_decay":5e-2,
+                 "weight_decay":5e-3,
                  "name": "discriminator_head"},
             ],
-            lr=5e-5,
-            betas=(0.5, 0.999)
+            lr=5e-5
         )
         
         self.steps = 20
@@ -222,7 +221,7 @@ class Trainer:
                 return_batch = batch["returns"].to(self.device)
                 advantage_batch = batch["advantages"].to(self.device)
 
-                obs_batch = self.obs_normalizer(obs_batch, i==0)
+                obs_batch = self.obs_normalizer(obs_batch)
 
                 policy_loss_dict = PPO.compute_policy_loss(self.actor,
                                                            log_prob_batch,
@@ -248,8 +247,8 @@ class Trainer:
 
                 self.ac_optimizer.zero_grad(set_to_none=True)
                 ac_loss.backward()
-                torch.nn.utils.clip_grad_norm_(self.actor.parameters(), 5.0)
-                torch.nn.utils.clip_grad_norm_(self.critic.parameters(), 5.0)
+                torch.nn.utils.clip_grad_norm_(self.actor.parameters(), 1.0)
+                torch.nn.utils.clip_grad_norm_(self.critic.parameters(), 1.0)
                 self.ac_optimizer.step()
                 
                 current_motion_batch = self.rollout_buffer.sample_tensor(
@@ -272,7 +271,7 @@ class Trainer:
                 expert_motion_batch = self.motion_normalizer(expert_motion_batch, True)
                 agent_motion_batch = self.motion_normalizer(agent_motion_batch, True)
 
-                d_loss_dict = GAN.compute_bce_loss(self.discriminator,
+                d_loss_dict = GAN.compute_soft_bce_loss(self.discriminator,
                                                 expert_motion_batch,
                                                 agent_motion_batch,
                                                 r1_gamma=5.0)
@@ -323,7 +322,7 @@ class Trainer:
 
     def train(self):
         obs, _ = self.env.reset()
-        for epoch in trange(1000):
+        for epoch in trange(4000):
             obs = self.rollout(obs)
             self.update()
         self.env.close()

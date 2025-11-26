@@ -81,6 +81,8 @@ class G1AMPEnv(DirectRLEnv):
     def _get_observations(self):
         self.previous_actions = self.actions.clone()
 
+        progress = (self.episode_length_buf.squeeze(-1).float() / (self.max_episode_length - 1)).unsqueeze(-1)
+
         obs = compute_obs(
             self.robot.data.joint_pos,
             self.robot.data.joint_vel,
@@ -89,6 +91,7 @@ class G1AMPEnv(DirectRLEnv):
             self.robot.data.body_lin_vel_w[:, self.ref_body_index],
             self.robot.data.body_ang_vel_w[:, self.ref_body_index],
             self.robot.data.body_pos_w[:, self.key_body_indexes],
+            progress
         )
 
         for i in reversed(range(self.cfg.motion_buffer_size - 1)):
@@ -117,7 +120,7 @@ class G1AMPEnv(DirectRLEnv):
         
         self.actions[env_ids] = 0.0
         num_samples = len(env_ids)
-        times = self.motion_loader.sample_times(num_samples)
+        times = np.zeros(num_samples)
 
         (
             dof_positions,
@@ -167,6 +170,11 @@ class G1AMPEnv(DirectRLEnv):
             body_angular_velocities,
         ) = self.motion_loader.sample(num_samples=num_samples, times=times)
 
+        progress = (
+            torch.as_tensor(times, device=dof_positions.device, dtype=dof_positions.dtype).unsqueeze(-1)
+            / self.motion_loader.duration
+        )
+
         motion_obs = compute_obs(
             dof_positions[:, self.motion_dof_indexes],
             dof_velocities[:, self.motion_dof_indexes],
@@ -175,6 +183,7 @@ class G1AMPEnv(DirectRLEnv):
             body_linear_velocities[:, self.motion_ref_body_index],
             body_angular_velocities[:, self.motion_ref_body_index],
             body_positions[:, self.motion_key_body_indexes],
+            progress
         )
 
         return motion_obs.view(-1, self.cfg.motion_observation_space)
@@ -198,6 +207,7 @@ def compute_obs(
     root_linear_velocities: torch.Tensor,
     root_angular_velocities: torch.Tensor,
     key_body_positions: torch.Tensor,
+    progress: torch.Tensor,
 ) -> torch.Tensor:
     obs = torch.cat(
         (
@@ -208,6 +218,7 @@ def compute_obs(
             root_linear_velocities,
             root_angular_velocities,
             (key_body_positions - root_positions.unsqueeze(-2)).view(key_body_positions.shape[0], -1),
+            progress
         ),
         dim=-1,
     )

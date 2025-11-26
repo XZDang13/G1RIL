@@ -13,7 +13,6 @@ class Actor(nn.Module):
         self.encoder = nn.Sequential(
             MLPLayer(obs_dim, 512, nn.SiLU(), True),
             MLPLayer(512, 512, nn.SiLU(), True),
-            MLPLayer(512, 512, nn.SiLU(), True),
         )
 
         self.head = GaussianHead(512, action_dim, log_std=-2.9, learnable_log_std=True)
@@ -31,7 +30,6 @@ class Critic(nn.Module):
         self.encoder = nn.Sequential(
             MLPLayer(obs_dim, 512, nn.SiLU(), True),
             MLPLayer(512, 512, nn.SiLU(), True),
-            MLPLayer(512, 512, nn.SiLU(), True),
         )
 
         self.head = CriticHead(512)
@@ -48,8 +46,6 @@ class Discriminator(nn.Module):
 
         self.encoder = nn.Sequential(
             MLPLayer(obs_dim, 512, nn.LeakyReLU(0.02), False),
-            MLPLayer(512, 512, nn.LeakyReLU(0.02), False),
-            MLPLayer(512, 512, nn.LeakyReLU(0.02), False),
             MLPLayer(512, 512, nn.LeakyReLU(0.02), False),
         )
 

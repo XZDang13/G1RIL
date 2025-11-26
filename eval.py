@@ -34,7 +34,7 @@ class Evaluator:
 
         self.env_name = "G1AMP-v0"
         
-        self.cfg.scene.num_envs = 1
+        self.cfg.scene.num_envs = 4
         self.env = gymnasium.make(self.env_name, cfg=self.cfg)
 
         obs_dim = self.cfg.observation_space
@@ -65,7 +65,7 @@ class Evaluator:
     def rollout(self, obs, info):
         length = 0
 
-        for i in range(1000):
+        for i in range(5000):
             obs = process_obs(obs)
             action = self.get_action(obs, True)
             #print(action)

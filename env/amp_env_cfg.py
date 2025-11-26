@@ -61,8 +61,8 @@ class G1AMPEnvCfg(DirectRLEnvCfg):
 
     decimation = 4
 
-    observation_space = 98
-    motion_space = 98
+    observation_space = 99
+    motion_space = 99
     motion_buffer_size = 2
     motion_observation_space = motion_space * motion_buffer_size
     action_space = 23
