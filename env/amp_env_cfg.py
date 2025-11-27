@@ -75,7 +75,7 @@ class G1AMPEnvCfg(DirectRLEnvCfg):
     early_termination = True
     termination_height = 0.5
 
-    training = False
+    training = True
 
     sim: SimulationCfg = SimulationCfg(
         dt=1 / 120,

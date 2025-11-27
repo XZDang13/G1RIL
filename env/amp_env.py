@@ -21,7 +21,7 @@ class G1AMPEnv(DirectRLEnv):
         dof_lower_limits = self.robot.data.soft_joint_pos_limits[0, :, 0]
         dof_upper_limits = self.robot.data.soft_joint_pos_limits[0, :, 1]
         self.action_offset = 0.5 * (dof_upper_limits + dof_lower_limits)
-        self.action_scale = dof_upper_limits - dof_lower_limits
+        self.action_scale = 0.5 * (dof_upper_limits - dof_lower_limits)
 
         key_body_names = [
             "torso_link",
@@ -115,12 +115,19 @@ class G1AMPEnv(DirectRLEnv):
     def _reset_idx(self, env_ids: torch.Tensor | None):
         if env_ids is None or len(env_ids) == self.num_envs:
             env_ids = self.robot._ALL_INDICES
+
         self.robot.reset(env_ids)
         super()._reset_idx(env_ids)
+
+        num_samples = len(env_ids)
+        if self.cfg.training:
+            times = self.motion_loader.sample_times(num_samples)
+        else:
+            times = np.zeros(num_samples, dtype=np.float32)
+        steps = torch.from_numpy(times * 30).to(self.device).long()
+        self.episode_length_buf[env_ids] = steps
         
         self.actions[env_ids] = 0.0
-        num_samples = len(env_ids)
-        times = np.zeros(num_samples)
 
         (
             dof_positions,

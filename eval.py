@@ -35,6 +35,7 @@ class Evaluator:
         self.env_name = "G1AMP-v0"
         
         self.cfg.scene.num_envs = 4
+        self.cfg.training = False
         self.env = gymnasium.make(self.env_name, cfg=self.cfg)
 
         obs_dim = self.cfg.observation_space
