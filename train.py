@@ -30,7 +30,7 @@ from env.amp_env_cfg import G1WalkEnvCfg, G1DanceEnvCfg
 
 class Trainer:
     def __init__(self):
-        self.cfg = G1DanceEnvCfg()
+        self.cfg = G1WalkEnvCfg()
         self.env_name = "G1AMP-v0"
 
         self.env = gymnasium.make(self.env_name, cfg=self.cfg)

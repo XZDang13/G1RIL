@@ -124,7 +124,8 @@ class G1AMPEnv(DirectRLEnv):
             times = self.motion_loader.sample_times(num_samples)
         else:
             times = np.zeros(num_samples, dtype=np.float32)
-        steps = torch.from_numpy(times * 30).to(self.device).long()
+        
+        steps = torch.from_numpy(times * 60).to(self.device).long()
         self.episode_length_buf[env_ids] = steps
         
         self.actions[env_ids] = 0.0
@@ -225,7 +226,7 @@ def compute_obs(
             root_linear_velocities,
             root_angular_velocities,
             (key_body_positions - root_positions.unsqueeze(-2)).view(key_body_positions.shape[0], -1),
-            progress
+            #progress
         ),
         dim=-1,
     )

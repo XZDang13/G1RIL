@@ -31,15 +31,15 @@ class MotionLoader:
         self._dof_names = data["dof_names"].tolist()
         self._body_names = data["body_names"].tolist()
 
-        self.dof_positions = torch.tensor(data["dof_positions"][:301], dtype=torch.float32, device=self.device)
-        self.dof_velocities = torch.tensor(data["dof_velocities"][:301], dtype=torch.float32, device=self.device)
-        self.body_positions = torch.tensor(data["body_positions"][:301], dtype=torch.float32, device=self.device)
-        self.body_rotations = torch.tensor(data["body_rotations"][:301], dtype=torch.float32, device=self.device)
+        self.dof_positions = torch.tensor(data["dof_positions"][:], dtype=torch.float32, device=self.device)
+        self.dof_velocities = torch.tensor(data["dof_velocities"][:], dtype=torch.float32, device=self.device)
+        self.body_positions = torch.tensor(data["body_positions"][:], dtype=torch.float32, device=self.device)
+        self.body_rotations = torch.tensor(data["body_rotations"][:], dtype=torch.float32, device=self.device)
         self.body_linear_velocities = torch.tensor(
-            data["body_linear_velocities"][:301], dtype=torch.float32, device=self.device
+            data["body_linear_velocities"][:], dtype=torch.float32, device=self.device
         )
         self.body_angular_velocities = torch.tensor(
-            data["body_angular_velocities"][:301], dtype=torch.float32, device=self.device
+            data["body_angular_velocities"][:], dtype=torch.float32, device=self.device
         )
 
         self.dt = 1.0 / data["fps"]

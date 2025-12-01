@@ -30,7 +30,7 @@ def process_obs(obs):
 
 class Evaluator:
     def __init__(self):
-        self.cfg = G1DanceEnvCfg()
+        self.cfg = G1WalkEnvCfg()
 
         self.env_name = "G1AMP-v0"
         

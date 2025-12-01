@@ -57,9 +57,9 @@ class EventCfg:
 @configclass
 class G1AMPEnvCfg(DirectRLEnvCfg):
     expert_motion_file = None
-    episode_length_s = 10.0
+    episode_length_s = 40.0
 
-    decimation = 4
+    decimation = 2
 
     observation_space = 99
     motion_space = 99
@@ -112,7 +112,15 @@ class G1AMPEnvCfg(DirectRLEnvCfg):
 @configclass
 class G1WalkEnvCfg(G1AMPEnvCfg):
     expert_motion_file = "env/motion_data/walk.npz"
+    observation_space = 98
+    motion_space = 98
+    motion_buffer_size = 2
+    motion_observation_space = motion_space * motion_buffer_size
     
 @configclass
 class G1DanceEnvCfg(G1AMPEnvCfg):
     expert_motion_file = "env/motion_data/chacha.npz"
+    observation_space = 99
+    motion_space = 99
+    motion_buffer_size = 2
+    motion_observation_space = motion_space * motion_buffer_size
