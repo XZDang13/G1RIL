@@ -57,7 +57,7 @@ class EventCfg:
 @configclass
 class G1AMPEnvCfg(DirectRLEnvCfg):
     expert_motion_file = None
-    episode_length_s = 40.0
+    episode_length_s = 10.0
 
     decimation = 2
 
