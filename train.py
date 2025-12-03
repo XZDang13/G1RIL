@@ -56,7 +56,7 @@ class Trainer:
                  {'params': self.critic.parameters(),
                  "name": "critic"},
             ],
-            lr=5e-5
+            lr=3e-4
         )
 
         self.d_optimizer = torch.optim.Adam(
@@ -325,7 +325,7 @@ class Trainer:
 
     def train(self):
         obs, _ = self.env.reset()
-        for epoch in trange(2000):
+        for epoch in trange(1000):
             obs = self.rollout(obs)
             self.update()
         self.env.close()

@@ -124,3 +124,4 @@ class G1DanceEnvCfg(G1AMPEnvCfg):
     motion_space = 99
     motion_buffer_size = 2
     motion_observation_space = motion_space * motion_buffer_size
+    episode_length_s = 10

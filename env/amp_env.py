@@ -18,10 +18,12 @@ class G1AMPEnv(DirectRLEnv):
 
         self.actions = torch.zeros(self.num_envs, 23, device=self.device)
 
-        dof_lower_limits = self.robot.data.soft_joint_pos_limits[0, :, 0]
-        dof_upper_limits = self.robot.data.soft_joint_pos_limits[0, :, 1]
-        self.action_offset = 0.5 * (dof_upper_limits + dof_lower_limits)
-        self.action_scale = 0.5 * (dof_upper_limits - dof_lower_limits)
+        #dof_lower_limits = self.robot.data.soft_joint_pos_limits[0, :, 0]
+        #dof_upper_limits = self.robot.data.soft_joint_pos_limits[0, :, 1]
+        #self.action_offset = 0.5 * (dof_upper_limits + dof_lower_limits)
+        #self.action_scale = 0.5 * (dof_upper_limits - dof_lower_limits)
+
+        self.action_scale = 0.25
 
         key_body_names = [
             "torso_link",
@@ -75,7 +77,7 @@ class G1AMPEnv(DirectRLEnv):
         self.actions = actions.clone()
 
     def _apply_action(self):
-        target_positions = self.action_offset + self.action_scale * self.actions
+        target_positions = self.action_scale * self.actions + self.robot.data.joint_pos
         self.robot.set_joint_position_target(target_positions)
 
     def _get_observations(self):
