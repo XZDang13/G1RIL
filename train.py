@@ -56,7 +56,7 @@ class Trainer:
                  {'params': self.critic.parameters(),
                  "name": "critic"},
             ],
-            lr=3e-4
+            lr=5e-5
         )
 
         self.d_optimizer = torch.optim.Adam(
@@ -65,7 +65,7 @@ class Trainer:
                  "weight_decay":1e-4,
                  "name": "discriminator"},
                 {'params': self.discriminator.head.parameters(),
-                 "weight_decay":1e-2,
+                 "weight_decay":5e-2,
                  "name": "discriminator_head"},
             ],
             lr=5e-5
@@ -134,9 +134,9 @@ class Trainer:
     def get_discriminator_reward(self, motion_obs_batch: torch.Tensor) -> torch.Tensor:
         motion_obs_batch = self.motion_normalizer(motion_obs_batch)
         disc_step:ValueStep = self.discriminator(motion_obs_batch)
-        #rewards = -torch.log(torch.maximum(1 - 1 / (1 + torch.exp(-disc_step.value)),
-        #                                    torch.tensor(0.0001, device=self.device)))
-        rewards = torch.nn.functional.softplus(disc_step.value)
+        rewards = -torch.log(torch.maximum(1 - 1 / (1 + torch.exp(-disc_step.value)),
+                                            torch.tensor(0.0001, device=self.device)))
+        #rewards = torch.nn.functional.softplus(disc_step.value)
         return rewards, disc_step.value
     
     def rollout(self, obs):
@@ -325,7 +325,7 @@ class Trainer:
 
     def train(self):
         obs, _ = self.env.reset()
-        for epoch in trange(1000):
+        for epoch in trange(2000):
             obs = self.rollout(obs)
             self.update()
         self.env.close()

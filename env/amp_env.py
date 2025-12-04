@@ -18,12 +18,12 @@ class G1AMPEnv(DirectRLEnv):
 
         self.actions = torch.zeros(self.num_envs, 23, device=self.device)
 
-        #dof_lower_limits = self.robot.data.soft_joint_pos_limits[0, :, 0]
-        #dof_upper_limits = self.robot.data.soft_joint_pos_limits[0, :, 1]
-        #self.action_offset = 0.5 * (dof_upper_limits + dof_lower_limits)
-        #self.action_scale = 0.5 * (dof_upper_limits - dof_lower_limits)
+        dof_lower_limits = self.robot.data.soft_joint_pos_limits[0, :, 0]
+        dof_upper_limits = self.robot.data.soft_joint_pos_limits[0, :, 1]
+        self.action_offset = 0.5 * (dof_upper_limits + dof_lower_limits)
+        self.action_scale = 0.5 * (dof_upper_limits - dof_lower_limits)
 
-        self.action_scale = 0.25
+        #self.action_scale = .5
 
         key_body_names = [
             "torso_link",
@@ -75,10 +75,11 @@ class G1AMPEnv(DirectRLEnv):
 
     def _pre_physics_step(self, actions: torch.Tensor):
         self.actions = actions.clone()
+        self.target_positions = self.action_scale * self.actions + self.action_offset
+        #self.target_positions = self.action_scale * self.actions + self.robot.data.joint_pos
 
     def _apply_action(self):
-        target_positions = self.action_scale * self.actions + self.robot.data.joint_pos
-        self.robot.set_joint_position_target(target_positions)
+        self.robot.set_joint_position_target(self.target_positions)
 
     def _get_observations(self):
         self.previous_actions = self.actions.clone()
@@ -145,7 +146,7 @@ class G1AMPEnv(DirectRLEnv):
         root_state = self.robot.data.default_root_state[env_ids].clone()
         
         root_state[:, 0:3] = body_positions[:, motion_reference_body_index] + self.scene.env_origins[env_ids]
-        root_state[:, 2] += 0.05  # lift the humanoid slightly to avoid collisions with the ground
+        #root_state[:, 2] += 0.05  # lift the humanoid slightly to avoid collisions with the ground
         root_state[:, 3:7] = body_rotations[:, motion_reference_body_index]
         root_state[:, 7:10] = body_linear_velocities[:, motion_reference_body_index]
         root_state[:, 10:13] = body_angular_velocities[:, motion_reference_body_index]

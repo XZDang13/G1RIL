@@ -15,7 +15,7 @@ class Actor(nn.Module):
             MLPLayer(512, 512, nn.SiLU(), True),
         )
 
-        self.head = GaussianHead(512, action_dim, log_std=0.0, learnable_log_std=True, max_action=1.0)
+        self.head = GaussianHead(512, action_dim, log_std=-2.9, learnable_log_std=True, max_action=1.0)
 
     def forward(self, obs:torch.Tensor, action:torch.Tensor|None=None) -> StochasticContinuousPolicyStep:
         x = self.encoder(obs)
