@@ -37,16 +37,17 @@ class Trainer:
 
         print(self.cfg.scene.num_envs)
 
-        obs_dim = self.cfg.observation_space
+        default_obs_dim = self.cfg.observation_space
+        privilege_obs_dim = self.cfg.privilege_observation_space
         motion_dim = self.cfg.motion_observation_space
         action_dim = self.cfg.action_space
 
         self.device = self.env.unwrapped.device
 
-        self.actor = Actor(obs_dim, action_dim).to(self.device)
-        self.critic = Critic(obs_dim).to(self.device)
+        self.actor = Actor(default_obs_dim, action_dim).to(self.device)
+        self.critic = Critic(default_obs_dim).to(self.device)
         self.discriminator = Discriminator(motion_dim).to(self.device)
-        self.obs_normalizer = Normalizer((obs_dim,)).to(self.device)
+        self.obs_normalizer = Normalizer((default_obs_dim,)).to(self.device)
         self.motion_normalizer = Normalizer((motion_dim,)).to(self.device)
 
         self.ac_optimizer = torch.optim.Adam(
@@ -70,7 +71,16 @@ class Trainer:
             ],
             lr=5e-5
         )
-        
+
+        self.teacher_actor = Actor(privilege_obs_dim, action_dim).to(self.device)
+        self.teacher_obs_normalizer = Normalizer((privilege_obs_dim,)).to(self.device)
+
+        normalizer_weights, actor_weights, _ = torch.load("weight.pth")
+        self.teacher_obs_normalizer.load_state_dict(normalizer_weights)
+        self.teacher_actor.load_state_dict(actor_weights)
+        self.teacher_obs_normalizer.eval()
+        self.teacher_actor.eval()
+
         self.steps = 20
 
         self.rollout_buffer = ReplayBuffer(
@@ -87,7 +97,7 @@ class Trainer:
                            "advantages"
                         ]
 
-        self.rollout_buffer.create_storage_space("observations", (obs_dim,), torch.float32)
+        self.rollout_buffer.create_storage_space("observations", (default_obs_dim,), torch.float32)
         self.rollout_buffer.create_storage_space("actions", (action_dim,), torch.float32)
         self.rollout_buffer.create_storage_space("log_probs", (), torch.float32)
         self.rollout_buffer.create_storage_space("rewards", (), torch.float32)
@@ -131,6 +141,14 @@ class Trainer:
         return action, log_prob, value
     
     @torch.no_grad()
+    def get_teacher_action(self, obs_batch:torch.Tensor):
+        obs_batch = self.teacher_obs_normalizer(obs_batch)
+        actor_step:StochasticContinuousPolicyStep = self.teacher_actor(obs_batch)
+        action = actor_step.mean
+        
+        return action
+    
+    @torch.no_grad()
     def get_discriminator_reward(self, motion_obs_batch: torch.Tensor) -> torch.Tensor:
         motion_obs_batch = self.motion_normalizer(motion_obs_batch)
         disc_step:ValueStep = self.discriminator(motion_obs_batch)
@@ -139,23 +157,33 @@ class Trainer:
         #rewards = torch.nn.functional.softplus(disc_step.value)
         return rewards, disc_step.value
     
+    @torch.no_grad()
+    def get_teacher_reward(self, teacher_action: torch.Tensor, student_action: torch.Tensor):
+        diff = student_action - teacher_action
+        mse = (diff ** 2).mean(dim=1)
+
+        return -mse
+    
     def rollout(self, obs):
         self.actor.eval()
         self.critic.eval()
         self.discriminator.eval()
         for _ in range(self.steps):
             self.global_step += 1
-            policy_obs = obs["policy"]
-            action, log_prob, value = self.get_action(policy_obs)
+            default_obs = obs["default"]
+            privilege_obs = obs["privilege"]
+            action, log_prob, value = self.get_action(default_obs)
+            teacher_action = self.get_teacher_action(privilege_obs)
             next_obs, task_reward, terminate, timeout, info = self.env.step(action)
             motion_obs = next_obs["motion"]
             disc_reward, logit = self.get_discriminator_reward(motion_obs)
-            reward = task_reward * 0.0 + disc_reward * 2.0
+            teacher_reward = self.get_teacher_reward(teacher_action, action)
+            reward = task_reward * 0.0 + disc_reward * 2.0 + teacher_reward
             #reward = task_reward
             done = terminate | timeout
             
             records = {
-                "observations": policy_obs,
+                "observations": default_obs,
                 "actions": action,
                 "log_probs": log_prob,
                 "rewards": reward,
@@ -174,13 +202,14 @@ class Trainer:
             obs = next_obs
 
             step_info = {}
-            step_info['step/mean_reward'] = disc_reward.mean().item()
+            step_info['step/mean_disc_reward'] = disc_reward.mean().item()
             step_info['step/mean_logit'] = logit.mean().item()
+            step_info['step/mean_teacher_reward'] = teacher_reward.mean().item()
                 
             WandbLogger.log_metrics(step_info, self.global_step)
 
-        last_policy_obs = obs["policy"]
-        _, _, last_value = self.get_action(last_policy_obs)
+        last_default_obs = obs["default"]
+        _, _, last_value = self.get_action(last_default_obs)
         returns, advantages = compute_gae(
             self.rollout_buffer.data["rewards"],
             self.rollout_buffer.data["values"],
@@ -332,7 +361,7 @@ class Trainer:
 
         torch.save(
             [self.obs_normalizer.state_dict(), self.actor.state_dict(), self.critic.state_dict()],
-            "weight.pth"
+            "student_weight.pth"
         )
 
 if __name__ == "__main__":

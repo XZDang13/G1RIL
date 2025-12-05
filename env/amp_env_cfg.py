@@ -61,8 +61,9 @@ class G1AMPEnvCfg(DirectRLEnvCfg):
 
     decimation = 2
 
-    observation_space = 99
-    motion_space = 99
+    observation_space = 75
+    privilege_observation_space = 98
+    motion_space = 98
     motion_buffer_size = 2
     motion_observation_space = motion_space * motion_buffer_size
     action_space = 23
@@ -112,7 +113,8 @@ class G1AMPEnvCfg(DirectRLEnvCfg):
 @configclass
 class G1WalkEnvCfg(G1AMPEnvCfg):
     expert_motion_file = "env/motion_data/walk.npz"
-    observation_space = 98
+    observation_space = 75
+    privilege_observation_space = 98
     motion_space = 98
     motion_buffer_size = 2
     motion_observation_space = motion_space * motion_buffer_size
@@ -120,7 +122,8 @@ class G1WalkEnvCfg(G1AMPEnvCfg):
 @configclass
 class G1DanceEnvCfg(G1AMPEnvCfg):
     expert_motion_file = "env/motion_data/chacha.npz"
-    observation_space = 98
+    observation_space = 75
+    privilege_observation_space = 98
     motion_space = 98
     motion_buffer_size = 2
     motion_observation_space = motion_space * motion_buffer_size

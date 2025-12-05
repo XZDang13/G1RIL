@@ -4,11 +4,11 @@ import torch
 import isaaclab.sim as sim_utils
 from isaaclab.assets import Articulation
 from isaaclab.envs import DirectRLEnv
-from isaaclab.utils.math import quat_apply
 
 from .motion_dataset import MotionLoader
 from .amp_env_cfg import G1WalkEnvCfg
 from .amp_env_cfg import G1DanceEnvCfg
+from .obs_processer import compute_privilege_obs, compute_default_obs
 
 class G1AMPEnv(DirectRLEnv):
     cfg:G1WalkEnvCfg | G1DanceEnvCfg
@@ -84,9 +84,17 @@ class G1AMPEnv(DirectRLEnv):
     def _get_observations(self):
         self.previous_actions = self.actions.clone()
 
-        progress = (self.episode_length_buf.squeeze(-1).float() / (self.max_episode_length - 1)).unsqueeze(-1)
+        #progress = (self.episode_length_buf.squeeze(-1).float() / (self.max_episode_length - 1)).unsqueeze(-1)
 
-        obs = compute_obs(
+        raw_obs = compute_default_obs(
+            self.robot.data.root_ang_vel_b,
+            self.robot.data.projected_gravity_b,
+            self.robot.data.joint_pos,
+            self.robot.data.joint_vel,
+            self.previous_actions
+        )
+
+        privilege_obs = compute_privilege_obs(
             self.robot.data.joint_pos,
             self.robot.data.joint_vel,
             self.robot.data.body_pos_w[:, self.ref_body_index],
@@ -94,16 +102,15 @@ class G1AMPEnv(DirectRLEnv):
             self.robot.data.body_lin_vel_w[:, self.ref_body_index],
             self.robot.data.body_ang_vel_w[:, self.ref_body_index],
             self.robot.data.body_pos_w[:, self.key_body_indexes],
-            progress
         )
 
         for i in reversed(range(self.cfg.motion_buffer_size - 1)):
             self.motion_buffer[:, i + 1] = self.motion_buffer[:, i]
         # build AMP observation
-        self.motion_buffer[:, 0] = obs.clone()
+        self.motion_buffer[:, 0] = privilege_obs.clone()
         motion_obs = self.motion_buffer.view(-1, self.cfg.motion_observation_space)
 
-        return {"policy": obs, "motion": motion_obs}
+        return {"default": raw_obs, "privilege": privilege_obs, "motion": motion_obs}
     
     def _get_rewards(self) -> torch.Tensor:
         return torch.ones(self.num_envs, device=self.device)
@@ -146,7 +153,7 @@ class G1AMPEnv(DirectRLEnv):
         root_state = self.robot.data.default_root_state[env_ids].clone()
         
         root_state[:, 0:3] = body_positions[:, motion_reference_body_index] + self.scene.env_origins[env_ids]
-        #root_state[:, 2] += 0.05  # lift the humanoid slightly to avoid collisions with the ground
+        root_state[:, 2] += 0.05  # lift the humanoid slightly to avoid collisions with the ground
         root_state[:, 3:7] = body_rotations[:, motion_reference_body_index]
         root_state[:, 7:10] = body_linear_velocities[:, motion_reference_body_index]
         root_state[:, 10:13] = body_angular_velocities[:, motion_reference_body_index]
@@ -181,12 +188,12 @@ class G1AMPEnv(DirectRLEnv):
             body_angular_velocities,
         ) = self.motion_loader.sample(num_samples=num_samples, times=times)
 
-        progress = (
-            torch.as_tensor(times, device=dof_positions.device, dtype=dof_positions.dtype).unsqueeze(-1)
-            / self.motion_loader.duration
-        )
+        #progress = (
+        #    torch.as_tensor(times, device=dof_positions.device, dtype=dof_positions.dtype).unsqueeze(-1)
+        #    / self.motion_loader.duration
+        #)
 
-        motion_obs = compute_obs(
+        motion_obs = compute_privilege_obs(
             dof_positions[:, self.motion_dof_indexes],
             dof_velocities[:, self.motion_dof_indexes],
             body_positions[:, self.motion_ref_body_index],
@@ -194,44 +201,6 @@ class G1AMPEnv(DirectRLEnv):
             body_linear_velocities[:, self.motion_ref_body_index],
             body_angular_velocities[:, self.motion_ref_body_index],
             body_positions[:, self.motion_key_body_indexes],
-            progress
         )
 
         return motion_obs.view(-1, self.cfg.motion_observation_space)
-
-@torch.jit.script
-def quaternion_to_tangent_and_normal(q: torch.Tensor) -> torch.Tensor:
-    ref_tangent = torch.zeros_like(q[..., :3])
-    ref_normal = torch.zeros_like(q[..., :3])
-    ref_tangent[..., 0] = 1
-    ref_normal[..., -1] = 1
-    tangent = quat_apply(q, ref_tangent)
-    normal = quat_apply(q, ref_normal)
-    return torch.cat([tangent, normal], dim=len(tangent.shape) - 1)
-
-@torch.jit.script
-def compute_obs(
-    dof_positions: torch.Tensor,
-    dof_velocities: torch.Tensor,
-    root_positions: torch.Tensor,
-    root_rotations: torch.Tensor,
-    root_linear_velocities: torch.Tensor,
-    root_angular_velocities: torch.Tensor,
-    key_body_positions: torch.Tensor,
-    progress: torch.Tensor,
-) -> torch.Tensor:
-    obs = torch.cat(
-        (
-            dof_positions,
-            dof_velocities,
-            root_positions[:, 2:3],  # root body height
-            quaternion_to_tangent_and_normal(root_rotations),
-            root_linear_velocities,
-            root_angular_velocities,
-            (key_body_positions - root_positions.unsqueeze(-2)).view(key_body_positions.shape[0], -1),
-            #progress
-        ),
-        dim=-1,
-    )
-
-    return obs

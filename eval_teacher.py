@@ -24,10 +24,6 @@ from RLAlg.normalizer import Normalizer
 from env.amp_env_cfg import G1WalkEnvCfg, G1DanceEnvCfg
 from model import Actor
 
-def process_obs(obs):
-    features = obs["policy"]
-    return features
-
 class Evaluator:
     def __init__(self):
         self.cfg = G1WalkEnvCfg()
@@ -38,7 +34,7 @@ class Evaluator:
         self.cfg.training = False
         self.env = gymnasium.make(self.env_name, cfg=self.cfg)
 
-        obs_dim = self.cfg.observation_space
+        obs_dim = self.cfg.privilege_observation_space
         action_dim = self.cfg.action_space
 
         self.device = self.env.unwrapped.device
@@ -67,9 +63,9 @@ class Evaluator:
         length = 0
 
         for i in range(5000):
-            obs = process_obs(obs)
-            action = self.get_action(obs, True)
-            print(action)
+            privilege_obs = obs["privilege"]
+            action = self.get_action(privilege_obs, True)
+            #print(action)
             #action = torch.zeros_like(action)  # for testing, use zero action
             next_obs, task_reward, terminate, timeout, info = self.env.step(action)
 
