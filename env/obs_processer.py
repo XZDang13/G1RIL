@@ -1,6 +1,11 @@
 import torch
 from isaaclab.utils.math import quat_apply
 
+def add_noise(values: torch.Tensor, noise_scale:float):
+    noise = torch.rand_like(values) * noise_scale
+
+    return values + noise
+
 def quaternion_to_tangent_and_normal(q: torch.Tensor) -> torch.Tensor:
     ref_tangent = torch.zeros_like(q[..., :3])
     ref_normal = torch.zeros_like(q[..., :3])
@@ -41,8 +46,16 @@ def compute_default_obs(
     gravity_oritation: torch.Tensor,
     dof_position: torch.Tensor,
     dof_velocity: torch.Tensor,
-    previous_action: torch.Tensor
+    previous_action: torch.Tensor,
+    noise: bool
 ):
+    if noise:
+        angular_velocity = add_noise(angular_velocity, 0.1)
+        gravity_oritation = add_noise(gravity_oritation, 0.1)
+        dof_position = add_noise(dof_position, 0.1)
+        dof_velocity = add_noise(dof_velocity, 0.1)
+        previous_action = add_noise(previous_action, 0.1)
+        
     obs = torch.cat(
         (
             angular_velocity,
@@ -55,3 +68,5 @@ def compute_default_obs(
     )
 
     return obs
+
+    

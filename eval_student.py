@@ -77,6 +77,7 @@ class Evaluator:
 
     def eval(self):
         obs, info = self.env.reset()
+        print(obs)
         obs, info = self.rollout(obs, info)
 
         self.env.close()

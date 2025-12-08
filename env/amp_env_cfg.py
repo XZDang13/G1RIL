@@ -47,12 +47,12 @@ class EventCfg:
         },
     )
 
-    #push_robot = EventTerm(
-    #    func=mdp.push_by_setting_velocity,
-    #    mode="interval",
-    #    interval_range_s=(10.0, 15.0),
-    #    params={"velocity_range": {"x": (-0.5, 0.5), "y": (-0.5, 0.5)}},
-    #)
+    push_robot = EventTerm(
+        func=mdp.push_by_setting_velocity,
+        mode="interval",
+        interval_range_s=(10.0, 15.0),
+        params={"velocity_range": {"x": (-0.5, 0.5), "y": (-0.5, 0.5)}},
+    )
 
 @configclass
 class G1AMPEnvCfg(DirectRLEnvCfg):
@@ -77,6 +77,7 @@ class G1AMPEnvCfg(DirectRLEnvCfg):
     termination_height = 0.5
 
     training = True
+    add_noise = True
 
     sim: SimulationCfg = SimulationCfg(
         dt=1 / 120,
@@ -109,6 +110,8 @@ class G1AMPEnvCfg(DirectRLEnvCfg):
     )
 
     robot:ArticulationCfg = G1_CFG.replace(prim_path="/World/envs/env_.*/Robot")
+
+    #events: EventCfg = EventCfg()
 
 @configclass
 class G1WalkEnvCfg(G1AMPEnvCfg):
