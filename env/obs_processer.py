@@ -50,11 +50,11 @@ def compute_default_obs(
     noise: bool
 ):
     if noise:
-        angular_velocity = add_noise(angular_velocity, 0.1)
+        angular_velocity = add_noise(angular_velocity, 0.25)
         gravity_oritation = add_noise(gravity_oritation, 0.1)
-        dof_position = add_noise(dof_position, 0.1)
-        dof_velocity = add_noise(dof_velocity, 0.1)
-        previous_action = add_noise(previous_action, 0.1)
+        dof_position = add_noise(dof_position, 0.05)
+        dof_velocity = add_noise(dof_velocity, 1.5)
+        #previous_action = add_noise(previous_action, 0.1)
         
     obs = torch.cat(
         (

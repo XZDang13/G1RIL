@@ -12,8 +12,8 @@ from RLAlg.nn.steps import StochasticContinuousPolicyStep
 from model import Actor
 from env.motion_dataset import MotionLoader
 
-simulation_dt = 1/120
-simulation_duration = 120
+simulation_dt = 1/600
+simulation_duration = 60
 
 isaac_joints_order = ['left_hip_pitch_joint', 'right_hip_pitch_joint', 'waist_yaw_joint', 'left_hip_roll_joint', 'right_hip_roll_joint', 'left_shoulder_pitch_joint', 'right_shoulder_pitch_joint', 'left_hip_yaw_joint', 'right_hip_yaw_joint', 'left_shoulder_roll_joint', 'right_shoulder_roll_joint', 'left_knee_joint', 'right_knee_joint', 'left_shoulder_yaw_joint', 'right_shoulder_yaw_joint', 'left_ankle_pitch_joint', 'right_ankle_pitch_joint', 'left_elbow_joint', 'right_elbow_joint', 'left_ankle_roll_joint', 'right_ankle_roll_joint', 'left_wrist_roll_joint', 'right_wrist_roll_joint']
 mujoco_joints_order = ['left_hip_pitch_joint', 'left_hip_roll_joint', 'left_hip_yaw_joint', 'left_knee_joint', 'left_ankle_pitch_joint', 'left_ankle_roll_joint', 'right_hip_pitch_joint', 'right_hip_roll_joint', 'right_hip_yaw_joint', 'right_knee_joint', 'right_ankle_pitch_joint', 'right_ankle_roll_joint', 'waist_yaw_joint', 'left_shoulder_pitch_joint', 'left_shoulder_roll_joint', 'left_shoulder_yaw_joint', 'left_elbow_joint', 'left_wrist_roll_joint', 'right_shoulder_pitch_joint', 'right_shoulder_roll_joint', 'right_shoulder_yaw_joint', 'right_elbow_joint', 'right_wrist_roll_joint']
@@ -138,16 +138,27 @@ mj_data.qvel[:3] = root_linear_vel
 mj_data.qvel[3:6] = root_ang_vel
 mj_data.qvel[6:] = dof_velocities
 
-mujoco.mj_forward(mj_model, mj_data)
+mujoco.mj_step(mj_model, mj_data)
+
+target_joints = dof_positions
 
 with mujoco.viewer.launch_passive(mj_model, mj_data) as viewer:
     # Close the viewer automatically after simulation_duration wall-seconds.
 
     start = time.time()
+    
+
     while viewer.is_running() and time.time() - start < simulation_duration:
         step_start = time.time()
+
+        tau = pd_control(target_joints, mj_data.qpos[7:], kps, np.zeros_like(kds), mj_data.qvel[6:], kds)
+        #print(tau)
+        mj_data.ctrl[:] = tau
+        #mj_data.ctrl[:] = np.ones(23) * 10
+        #mj_data.qpos[-1] = 1
+        mujoco.mj_step(mj_model, mj_data)
         
-        if counter % 2 == 0:
+        if counter % 10 == 0:
             qj = mj_data.qpos[7:]
             dqj = mj_data.qvel[6:]
             quat = mj_data.qpos[3:7]
@@ -160,28 +171,16 @@ with mujoco.viewer.launch_passive(mj_model, mj_data) as viewer:
             obs = np.concatenate([ang_vel, gravity_orientation, qj, dqj, previous_action])
             
             obs = torch.from_numpy(obs).unsqueeze(0).float().to(device)
-
-            
-
             action = get_action(obs, True).cpu()
 
             target_joints = action_scale * action + action_offset
 
-            #target_joints = target_joints[:, isaac2mujoco].squeeze(0).numpy()
-            target_joints = dof_positions
+            target_joints = target_joints[:, isaac2mujoco].squeeze(0).numpy()
+            #target_joints = dof_positions
 
             previous_action = action.squeeze(0).numpy()
 
         counter += 1
-
-        #print(mj_data.qpos[7:])
-
-        #tau = pd_control(target_joints, mj_data.qpos[7:], kps, np.zeros_like(kds), mj_data.qvel[6:], kds)
-        #print(tau)
-        #mj_data.ctrl[:] = tau
-        #mj_data.ctrl[:] = np.ones(23) * 10
-        mj_data.qpos[-1] = 1
-        mujoco.mj_step(mj_model, mj_data)
         viewer.sync()
 
         # Rudimentary time keeping, will drift relative to wall clock.

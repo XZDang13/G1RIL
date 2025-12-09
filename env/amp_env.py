@@ -23,8 +23,8 @@ class G1AMPEnv(DirectRLEnv):
         self.action_offset = 0.5 * (dof_upper_limits + dof_lower_limits)
         self.action_scale = 0.5 * (dof_upper_limits - dof_lower_limits)
 
-        print(self.action_offset)
-        print(self.action_scale)
+        #print(self.action_offset)
+        #print(self.action_scale)
 
         #self.action_scale = .5
 
@@ -52,9 +52,6 @@ class G1AMPEnv(DirectRLEnv):
         self.motion_ref_body_index = self.motion_loader.get_body_index([self.cfg.reference_body])[0]
         self.motion_key_body_indexes = self.motion_loader.get_body_index(key_body_names)
 
-        print(self.robot.data.joint_stiffness)
-        print(self.robot.data.joint_damping)
-
         self.motion_buffer = torch.zeros(
             (
                 self.num_envs,
@@ -81,12 +78,13 @@ class G1AMPEnv(DirectRLEnv):
 
     def _pre_physics_step(self, actions: torch.Tensor):
         self.actions = actions.clone()
+        if self.cfg.training:
+            self.actions += torch.rand_like(self.actions) * 0.1
         self.target_positions = self.action_scale * self.actions + self.action_offset
         #self.target_positions = self.action_scale * self.actions + self.robot.data.joint_pos
 
     def _apply_action(self):
         self.robot.set_joint_position_target(self.target_positions)
-        print(self.robot.data.applied_torque)
 
     def _get_observations(self):
         self.previous_actions = self.actions.clone()
@@ -117,8 +115,6 @@ class G1AMPEnv(DirectRLEnv):
         # build AMP observation
         self.motion_buffer[:, 0] = privilege_obs.clone()
         motion_obs = self.motion_buffer.view(-1, self.cfg.motion_observation_space)
-
-        
 
         return {"default": raw_obs, "privilege": privilege_obs, "motion": motion_obs}
     
