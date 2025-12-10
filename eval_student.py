@@ -21,17 +21,16 @@ import numpy as np
 from RLAlg.nn.steps import StochasticContinuousPolicyStep, ValueStep
 from RLAlg.normalizer import Normalizer
 
-from env.amp_env_cfg import G1WalkEnvCfg, G1DanceEnvCfg
+from env.amp_env_cfg import G1WalkEvaluatingEnvCfg
 from model import Actor
 
 class Evaluator:
     def __init__(self):
-        self.cfg = G1WalkEnvCfg()
+        self.cfg = G1WalkEvaluatingEnvCfg()
 
         self.env_name = "G1AMP-v0"
         
         self.cfg.scene.num_envs = 4
-        self.cfg.training = False
         self.env = gymnasium.make(self.env_name, cfg=self.cfg)
 
         obs_dim = self.cfg.observation_space

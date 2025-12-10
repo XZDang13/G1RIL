@@ -8,7 +8,7 @@ from isaaclab.envs import DirectRLEnv
 from .motion_dataset import MotionLoader
 from .amp_env_cfg import G1WalkEnvCfg
 from .amp_env_cfg import G1DanceEnvCfg
-from .obs_processer import compute_privilege_obs, compute_default_obs
+from .obs_processer import ObservationManager, get_noise
 
 class G1AMPEnv(DirectRLEnv):
     cfg:G1WalkEnvCfg | G1DanceEnvCfg
@@ -27,6 +27,20 @@ class G1AMPEnv(DirectRLEnv):
         #print(self.action_scale)
 
         #self.action_scale = .5
+
+        self.action_queue = torch.zeros(
+            (self.cfg.scene.num_envs, self.cfg.ctrl_delay_step_range[1] + 1, self.cfg.action_space),
+            dtype=torch.float,
+            device=self.device,
+            requires_grad=False,
+        )
+        self._action_delay = torch.randint(
+            self.cfg.ctrl_delay_step_range[0],
+            self.cfg.ctrl_delay_step_range[1] + 1,
+            (self.cfg.scene.num_envs,),
+            device=self.device,
+            requires_grad=False,
+        )
 
         key_body_names = [
             "torso_link",
@@ -61,7 +75,6 @@ class G1AMPEnv(DirectRLEnv):
             device=self.device
         )
 
-
     def _setup_scene(self):
         self.robot = Articulation(self.cfg.robot)
         self.scene.articulations["robot"] = self.robot
@@ -77,11 +90,21 @@ class G1AMPEnv(DirectRLEnv):
         light_cfg.func("/World/Light", light_cfg)
 
     def _pre_physics_step(self, actions: torch.Tensor):
-        self.actions = actions.clone()
+        if self.cfg.ctrl_delay_step_range[1] > 0:
+            self.action_queue[:, 1:] = self.action_queue[:, :-1].clone()
+            self.action_queue[:, 0] = actions.clone()
+            self.actions = self.action_queue[torch.arange(self.num_envs), self._action_delay].clone()
+        else:
+            self.actions = actions.clone()
+
+        self.processed_actions = actions.clone()
+
         if self.cfg.training:
-            self.actions += torch.rand_like(self.actions) * 0.1
-        self.target_positions = self.action_scale * self.actions + self.action_offset
+            self.processed_actions += torch.rand_like(self.processed_actions) * 0.05
+
+        self.target_positions = self.action_scale * self.processed_actions + self.action_offset
         #self.target_positions = self.action_scale * self.actions + self.robot.data.joint_pos
+
 
     def _apply_action(self):
         self.robot.set_joint_position_target(self.target_positions)
@@ -91,16 +114,15 @@ class G1AMPEnv(DirectRLEnv):
 
         #progress = (self.episode_length_buf.squeeze(-1).float() / (self.max_episode_length - 1)).unsqueeze(-1)
 
-        raw_obs = compute_default_obs(
+        default_obs, default_obs_noise = ObservationManager.compute_default_obs(
             self.robot.data.root_ang_vel_b,
             self.robot.data.projected_gravity_b,
             self.robot.data.joint_pos,
             self.robot.data.joint_vel,
-            self.previous_actions,
-            self.cfg.add_noise
+            self.previous_actions
         )
 
-        privilege_obs = compute_privilege_obs(
+        privilege_obs, privilege_obs_noise = ObservationManager.compute_privilege_obs(
             self.robot.data.joint_pos,
             self.robot.data.joint_vel,
             self.robot.data.body_pos_w[:, self.ref_body_index],
@@ -116,7 +138,13 @@ class G1AMPEnv(DirectRLEnv):
         self.motion_buffer[:, 0] = privilege_obs.clone()
         motion_obs = self.motion_buffer.view(-1, self.cfg.motion_observation_space)
 
-        return {"default": raw_obs, "privilege": privilege_obs, "motion": motion_obs}
+        if self.cfg.add_default_obs_noise:
+            default_obs += default_obs_noise
+
+        if self.cfg.add_privilege_obs_noise:
+            privilege_obs += privilege_obs_noise
+            
+        return {"default": default_obs, "privilege": privilege_obs, "motion": motion_obs}
     
     def _get_rewards(self) -> torch.Tensor:
         return torch.ones(self.num_envs, device=self.device)
@@ -199,7 +227,7 @@ class G1AMPEnv(DirectRLEnv):
         #    / self.motion_loader.duration
         #)
 
-        motion_obs = compute_privilege_obs(
+        motion_obs, _ = ObservationManager.compute_privilege_obs(
             dof_positions[:, self.motion_dof_indexes],
             dof_velocities[:, self.motion_dof_indexes],
             body_positions[:, self.motion_ref_body_index],

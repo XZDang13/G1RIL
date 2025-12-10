@@ -150,13 +150,6 @@ with mujoco.viewer.launch_passive(mj_model, mj_data) as viewer:
 
     while viewer.is_running() and time.time() - start < simulation_duration:
         step_start = time.time()
-
-        tau = pd_control(target_joints, mj_data.qpos[7:], kps, np.zeros_like(kds), mj_data.qvel[6:], kds)
-        #print(tau)
-        mj_data.ctrl[:] = tau
-        #mj_data.ctrl[:] = np.ones(23) * 10
-        #mj_data.qpos[-1] = 1
-        mujoco.mj_step(mj_model, mj_data)
         
         if counter % 10 == 0:
             qj = mj_data.qpos[7:]
@@ -179,6 +172,13 @@ with mujoco.viewer.launch_passive(mj_model, mj_data) as viewer:
             #target_joints = dof_positions
 
             previous_action = action.squeeze(0).numpy()
+
+        tau = pd_control(target_joints, mj_data.qpos[7:], kps, np.zeros_like(kds), mj_data.qvel[6:], kds)
+        #print(tau)
+        mj_data.ctrl[:] = tau
+        #mj_data.ctrl[:] = np.ones(23) * 10
+        #mj_data.qpos[-1] = 1
+        mujoco.mj_step(mj_model, mj_data)
 
         counter += 1
         viewer.sync()

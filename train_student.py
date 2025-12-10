@@ -26,11 +26,11 @@ from RLAlg.alg.gan import GAN
 from RLAlg.logger import WandbLogger
 
 from model import Actor, Critic, Discriminator
-from env.amp_env_cfg import G1WalkEnvCfg, G1DanceEnvCfg
+from env.amp_env_cfg import G1WalkTrainingEnvCfg
 
 class Trainer:
     def __init__(self):
-        self.cfg = G1WalkEnvCfg()
+        self.cfg = G1WalkTrainingEnvCfg()
         self.env_name = "G1AMP-v0"
 
         self.env = gymnasium.make(self.env_name, cfg=self.cfg)
