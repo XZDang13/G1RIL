@@ -85,7 +85,6 @@ G1_CFG = ArticulationCfg(
                     ".*_shoulder_yaw_joint",
                     ".*_elbow_joint",
                     ".*_wrist_.*",
-
                 ],
                 effort_limit_sim=300,
                 velocity_limit_sim=100.0,
@@ -95,7 +94,6 @@ G1_CFG = ArticulationCfg(
                     ".*_shoulder_.*": 0.01,
                     ".*_elbow_.*": 0.01,
                     ".*_wrist_.*": 0.01,
-
                 },
             ),
         },

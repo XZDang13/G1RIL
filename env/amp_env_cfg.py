@@ -3,7 +3,7 @@ import isaaclab.sim as sim_utils
 from isaaclab.envs import DirectRLEnvCfg
 from isaaclab.scene import InteractiveSceneCfg
 from isaaclab.terrains import TerrainImporterCfg
-from isaaclab.sim import PhysxCfg, SimulationCfg
+from isaaclab.sim import SimulationCfg
 from isaaclab.utils import configclass
 from isaaclab.assets import ArticulationCfg
 from isaaclab.managers import EventTermCfg as EventTerm
@@ -38,8 +38,7 @@ class EventCfg:
                                                              "right_hip_yaw_link",
                                                              "right_hip_roll_link",
                                                              "right_hip_pitch_link",
-                                                             "torso_link",
-                                                            ]
+                                                             "torso_link",]
             ),
             "mass_distribution_params": (0.7, 1.3),
             "operation": "scale",
@@ -55,8 +54,7 @@ class EventCfg:
             "com_range": {"x": (-0.1, 0.1), "y": (-0.1, 0.1), "z": (-0.1, 0.1)},
         },
     )
-    
-    
+     
     robot_joint_stiffness_and_damping = EventTerm(
         func=mdp.randomize_actuator_gains,
         min_step_count_between_reset=200,
@@ -80,7 +78,6 @@ class EventCfg:
             "operation": "scale",
         },
     )
-    
     
     push_robot = EventTerm(
         func=mdp.push_by_setting_velocity,

@@ -8,7 +8,7 @@ from isaaclab.envs import DirectRLEnv
 from .motion_dataset import MotionLoader
 from .amp_env_cfg import G1WalkEnvCfg
 from .amp_env_cfg import G1DanceEnvCfg
-from .obs_processer import ObservationManager, get_noise
+from .obs_processer import ObservationManager
 
 class G1AMPEnv(DirectRLEnv):
     cfg:G1WalkEnvCfg | G1DanceEnvCfg
@@ -97,17 +97,21 @@ class G1AMPEnv(DirectRLEnv):
         else:
             self.actions = actions.clone()
 
-        self.processed_actions = actions.clone()
-
-        if self.cfg.training:
-            self.processed_actions += torch.rand_like(self.processed_actions) * 0.05
-
-        self.target_positions = self.action_scale * self.processed_actions + self.action_offset
-        #self.target_positions = self.action_scale * self.actions + self.robot.data.joint_pos
-
+        self.target_pos = self.action_scale * self.actions + self.action_offset
+        self.tau = self.pd_control()
 
     def _apply_action(self):
-        self.robot.set_joint_position_target(self.target_positions)
+        self.robot.set_joint_effort_target(self.tau)
+
+    def pd_control(self):
+        joint_pos = self.robot.data.joint_pos
+        joint_vel = self.robot.data.joint_vel
+
+        tau = (
+            self.robot.data.joint_stiffness * (self.target_pos - joint_pos) - self.robot.data.joint_damping * joint_vel
+        )
+
+        return tau
 
     def _get_observations(self):
         self.previous_actions = self.actions.clone()

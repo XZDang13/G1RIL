@@ -30,7 +30,7 @@ class ObservationManager:
         tangent_and_normal = quaternion_to_tangent_and_normal(root_rotations)
         relative_key_body_pos = (key_body_positions - root_positions.unsqueeze(-2)).view(key_body_positions.shape[0],
                                                                                          -1)
-
+        
         obs = torch.cat(
             (
                 dof_positions,
@@ -44,12 +44,11 @@ class ObservationManager:
             ),
             dim=-1,
         )
-
-        
+     
         dof_positions_noise = get_noise(dof_positions, 0.1)
         dof_velocities_noise = get_noise(dof_velocities, 0.15)
         root_height_noise = get_noise(root_height, 0.05)
-        tangent_and_normal_noise = get_noise(tangent_and_normal, 0.1)
+        tangent_and_normal_noise = get_noise(tangent_and_normal, 0.05)
         root_linear_velocities_noise = get_noise(root_linear_velocities, 0.01)
         root_angular_velocities_noise = get_noise(root_angular_velocities, 0.01)
         relative_key_body_pos_noise = get_noise(relative_key_body_pos, 0.05)
@@ -67,7 +66,6 @@ class ObservationManager:
             dim=-1,
         )
         
-
         return obs, noise
 
     @staticmethod
@@ -90,10 +88,10 @@ class ObservationManager:
         )
 
         angular_velocity_noise = get_noise(angular_velocity, 0.1)
-        gravity_oritation_noise = get_noise(gravity_oritation, 0.05)
+        gravity_oritation_noise = get_noise(gravity_oritation, 0.01)
         dof_position_noise = get_noise(dof_position, 0.1)
         dof_velocity_noise = get_noise(dof_velocity, 0.15)
-        previous_action_noise = get_noise(previous_action, 0.05)
+        previous_action_noise = get_noise(previous_action, 0.01)
 
         noise = torch.cat(
             (
@@ -106,8 +104,4 @@ class ObservationManager:
             dim=-1,
         )
 
-
         return obs, noise
-    
-
-    

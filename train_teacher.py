@@ -16,6 +16,7 @@ simulation_app = app_launcher.app
 from tqdm import trange
 import gymnasium
 import torch
+import torch.nn.functional as F
 import numpy as np
 
 from RLAlg.normalizer import Normalizer
@@ -78,14 +79,15 @@ class Trainer:
             self.steps
         )
 
-        self.batch_keys = ["observations",
-                           "actions",
-                           "log_probs",
-                           "rewards",
-                           "values",
-                           "returns",
-                           "advantages"
-                        ]
+        self.batch_keys = [
+            "observations",
+            "actions",
+            "log_probs",
+            "rewards",
+            "values",
+            "returns",
+            "advantages"
+        ]
 
         self.rollout_buffer.create_storage_space("observations", (obs_dim,), torch.float32)
         self.rollout_buffer.create_storage_space("actions", (action_dim,), torch.float32)
@@ -134,9 +136,9 @@ class Trainer:
     def get_discriminator_reward(self, motion_obs_batch: torch.Tensor) -> torch.Tensor:
         motion_obs_batch = self.motion_normalizer(motion_obs_batch)
         disc_step:ValueStep = self.discriminator(motion_obs_batch)
-        rewards = -torch.log(torch.maximum(1 - 1 / (1 + torch.exp(-disc_step.value)),
-                                            torch.tensor(0.0001, device=self.device)))
-        #rewards = torch.nn.functional.softplus(disc_step.value)
+        #rewards = -torch.log(torch.maximum(1 - 1 / (1 + torch.exp(-disc_step.value)),
+        #                                    torch.tensor(0.0001, device=self.device)))
+        rewards = F.softplus(disc_step.value)
         return rewards, disc_step.value
     
     def rollout(self, obs):
@@ -189,7 +191,6 @@ class Trainer:
             0.99,
             0.95
         )
-        
 
         self.rollout_buffer.add_storage("returns", returns)
         self.rollout_buffer.add_storage("advantages", advantages)
@@ -237,10 +238,11 @@ class Trainer:
                 kl_divergence = policy_loss_dict["kl_divergence"]
 
                 value_loss_dict = PPO.compute_clipped_value_loss(self.critic,
-                                                    obs_batch,
-                                                    value_batch,
-                                                    return_batch,
-                                                    0.2)
+                                                                 obs_batch,
+                                                                 value_batch,
+                                                                 return_batch,
+                                                                 0.2
+                                                                )
                 
                 value_loss = value_loss_dict["loss"]
 
@@ -273,11 +275,11 @@ class Trainer:
                 agent_motion_batch = self.motion_normalizer(agent_motion_batch, True)
 
                 d_loss_dict = GAN.compute_soft_bce_loss(self.discriminator,
-                                                expert_motion_batch,
-                                                agent_motion_batch,
-                                                label_smoothing=0.2,
-                                                one_sided_smoothing=True,
-                                                r1_gamma=5.0)
+                                                        expert_motion_batch,
+                                                        agent_motion_batch,
+                                                        label_smoothing=0.2,
+                                                        one_sided_smoothing=True,
+                                                        r1_gamma=5.0)
                 
                 d_loss = d_loss_dict["loss"]
                 d_loss_real = d_loss_dict["loss_real"]
@@ -289,8 +291,6 @@ class Trainer:
                 self.d_optimizer.zero_grad(set_to_none=True)
                 weighted_d_loss.backward()
                 self.d_optimizer.step()
-
-                
 
                 policy_loss_buffer.append(policy_loss.item())
                 value_loss_buffer.append(value_loss.item())
