@@ -49,6 +49,11 @@ kds = np.array(
     ]
 )
 
+effort_limit = np.array(
+            [300., 300., 300., 300.,  20.,  20., 300., 300., 300., 300.,  20.,  20.,
+             300., 300., 300., 300., 300., 300., 300., 300., 300., 300., 300.]
+        )
+
 motion_loader = MotionLoader("env/motion_data/walk.npz", device="cpu")
 
 times = np.zeros(1)
@@ -85,6 +90,9 @@ for joint in mujoco_joints_order:
     idx = isaac_joints_order.index(joint)
     isaac2mujoco.append(idx)
 
+print(mujoco2isaac)
+print(isaac2mujoco)
+
 def get_gravity_orientation(quaternion):
     qw = quaternion[0]
     qx = quaternion[1]
@@ -110,7 +118,10 @@ def get_action(obs_batch:torch.Tensor, determine:bool=False):
     return action
 
 def pd_control(target_q, q, kp, target_dq, dq, kd):
-    return (target_q - q) * kp + (target_dq - dq) * kd
+    tau = (target_q - q) * kp + (target_dq - dq) * kd
+    tau = np.clip(tau, -effort_limit, effort_limit)
+
+    return tau
 
 device = torch.device("cuda:0")
 
@@ -152,32 +163,32 @@ with mujoco.viewer.launch_passive(mj_model, mj_data) as viewer:
         step_start = time.time()
         
         if counter % 10 == 0:
-            #qj = mj_data.qpos[7:]
-            #dqj = mj_data.qvel[6:]
-            #quat = mj_data.qpos[3:7]
-            #ang_vel = mj_data.qvel[3:6]
+            qj = mj_data.qpos[7:]
+            dqj = mj_data.qvel[6:]
+            quat = mj_data.qpos[3:7]
+            ang_vel = mj_data.qvel[3:6]
 
-            #qj = qj[mujoco2isaac]
-            #dqj = dqj[mujoco2isaac]
-            #gravity_orientation = get_gravity_orientation(quat)
+            qj = qj[mujoco2isaac]
+            dqj = dqj[mujoco2isaac]
+            gravity_orientation = get_gravity_orientation(quat)
 
-            #obs = np.concatenate([ang_vel, gravity_orientation, qj, dqj, previous_action])
+            obs = np.concatenate([ang_vel, gravity_orientation, qj, dqj, previous_action])
             
-            #obs = torch.from_numpy(obs).unsqueeze(0).float().to(device)
-            #action = get_action(obs, True).cpu()
+            obs = torch.from_numpy(obs).unsqueeze(0).float().to(device)
+            action = get_action(obs, True).cpu()
 
-            #target_joints = action_scale * action + action_offset
+            target_joints = action_scale * action + action_offset
 
-            #target_joints = target_joints[:, isaac2mujoco].squeeze(0).numpy()
-            target_joints = dof_positions
+            target_joints = target_joints[:, isaac2mujoco].squeeze(0).numpy()
+            #target_joints = dof_positions
 
-            #previous_action = action.squeeze(0).numpy()
+            previous_action = action.squeeze(0).numpy()
 
         tau = pd_control(target_joints, mj_data.qpos[7:], kps, np.zeros_like(kds), mj_data.qvel[6:], kds)
         #print(tau)
         mj_data.ctrl[:] = tau
         #mj_data.ctrl[:] = np.ones(23) * 10
-        #mj_data.qpos[-1] = 1
+        #mj_data.qpos[7:] = target_joints
         mujoco.mj_step(mj_model, mj_data)
 
         counter += 1

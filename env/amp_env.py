@@ -23,24 +23,10 @@ class G1AMPEnv(DirectRLEnv):
         self.action_offset = 0.5 * (dof_upper_limits + dof_lower_limits)
         self.action_scale = 0.5 * (dof_upper_limits - dof_lower_limits)
 
-        #print(self.action_offset)
-        #print(self.action_scale)
+        print(self.robot.data.joint_stiffness)
+        print(self.robot.data.joint_damping)
 
         #self.action_scale = .5
-
-        self.action_queue = torch.zeros(
-            (self.cfg.scene.num_envs, self.cfg.ctrl_delay_step_range[1] + 1, self.cfg.action_space),
-            dtype=torch.float,
-            device=self.device,
-            requires_grad=False,
-        )
-        self._action_delay = torch.randint(
-            self.cfg.ctrl_delay_step_range[0],
-            self.cfg.ctrl_delay_step_range[1] + 1,
-            (self.cfg.scene.num_envs,),
-            device=self.device,
-            requires_grad=False,
-        )
 
         key_body_names = [
             "torso_link",
@@ -90,36 +76,21 @@ class G1AMPEnv(DirectRLEnv):
         light_cfg.func("/World/Light", light_cfg)
 
     def _pre_physics_step(self, actions: torch.Tensor):
-        if self.cfg.ctrl_delay_step_range[1] > 0:
-            self.action_queue[:, 1:] = self.action_queue[:, :-1].clone()
-            self.action_queue[:, 0] = actions.clone()
-            self.actions = self.action_queue[torch.arange(self.num_envs), self._action_delay].clone()
-        else:
-            self.actions = actions.clone()
+        
+        self.actions = actions.clone()
 
         self.target_pos = self.action_scale * self.actions + self.action_offset
-        self.tau = self.pd_control()
+        #self.tau = self.pd_control()
 
     def _apply_action(self):
-        self.robot.set_joint_effort_target(self.tau)
-
-    def pd_control(self):
-        joint_pos = self.robot.data.joint_pos
-        joint_vel = self.robot.data.joint_vel
-
-        tau = (
-            self.robot.data.joint_stiffness * (self.target_pos - joint_pos) - self.robot.data.joint_damping * joint_vel
-        )
-
-        return tau
+        self.robot.set_joint_position_target(self.target_pos)
 
     def _get_observations(self):
         self.previous_actions = self.actions.clone()
-
         #progress = (self.episode_length_buf.squeeze(-1).float() / (self.max_episode_length - 1)).unsqueeze(-1)
 
         default_obs, default_obs_noise = ObservationManager.compute_default_obs(
-            self.robot.data.root_ang_vel_b,
+            self.robot.data.root_ang_vel_w,
             self.robot.data.projected_gravity_b,
             self.robot.data.joint_pos,
             self.robot.data.joint_vel,

@@ -354,7 +354,7 @@ class Trainer:
 
     def train(self):
         obs, _ = self.env.reset()
-        for epoch in trange(2000):
+        for epoch in trange(1000):
             obs = self.rollout(obs)
             self.update()
         self.env.close()
