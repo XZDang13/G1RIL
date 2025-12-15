@@ -62,8 +62,8 @@ class Evaluator:
         length = 0
 
         for i in range(5000):
-            privilege_obs = obs["default"]
-            action = self.get_action(privilege_obs, True)
+            default_obs = obs["default"]
+            action = self.get_action(default_obs, True)
             #print(action)
             #action = torch.zeros_like(action)  # for testing, use zero action
             next_obs, task_reward, terminate, timeout, info = self.env.step(action)
@@ -76,6 +76,38 @@ class Evaluator:
 
     def eval(self):
         obs, info = self.env.reset()
+        
+        default_obs = obs["default"]
+        action = self.get_action(default_obs, True)
+        next_obs, task_reward, terminate, timeout, info = self.env.step(action)
+
+        next_default_obs = next_obs["default"]
+
+        print("obs:")
+        print(default_obs[0])
+        print("-------")
+        print("actions:")
+        print(action[0])
+        print("-------")
+        print("next obs:")
+        print(next_default_obs[0])
+        print("-------")
+        print("ori:")
+        print(self.env.unwrapped.robot.data.projected_gravity_b[0])
+        print("-------")
+        print("ang vel:")
+        print(self.env.unwrapped.robot.data.root_ang_vel_w[0])
+        print("-------")
+        print("joint pos:")
+        print(self.env.unwrapped.robot.data.joint_pos[0])
+        print("-------")
+        print("joint vel:")
+        print(self.env.unwrapped.robot.data.joint_vel[0])
+        print("-------")
+        print("pre action:")
+        print(self.env.unwrapped.previous_actions[0])
+        print("--------")
+        
         #print(obs["default"][0])
         #obs, info = self.rollout(obs, info)
 

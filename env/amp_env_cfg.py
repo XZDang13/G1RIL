@@ -113,8 +113,6 @@ class G1AMPEnvCfg(DirectRLEnvCfg):
     add_privilege_obs_noise = True
     add_action_noise = True
 
-    ctrl_delay_step_range = (0, 3)
-
     sim: SimulationCfg = SimulationCfg(
         dt=1 / 120,
         render_interval=decimation,
@@ -176,7 +174,6 @@ class G1WalkEvaluatingEnvCfg(G1WalkEnvCfg):
     add_default_obs_noise = False
     add_privilege_obs_noise = False
     add_action_noise = False
-    ctrl_delay_step_range = (2, 2)
 
 @configclass
 class G1DanceTrainingEnvCfg(G1DanceEnvCfg):
@@ -188,4 +185,3 @@ class G1DanceEvaluatingEnvCfg(G1DanceEnvCfg):
     add_default_obs_noise = False
     add_privilege_obs_noise = False
     add_action_noise = False
-    ctrl_delay_step_range = (2, 2)

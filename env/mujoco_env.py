@@ -25,11 +25,14 @@ def quat_rotate_inverse(q: torch.Tensor, v: torch.Tensor) -> torch.Tensor:
     return a - b + c
 
 class MujocoEnv:
-    def __init__(self, simulation_dt):
+    def __init__(self, simulation_dt, decimation, render=False):
         self.mj_model = mujoco.MjModel.from_xml_path("env/assets/scene.xml")
         self.mj_data = mujoco.MjData(self.mj_model)
         self.mj_model.opt.timestep = simulation_dt
-        #self.mj_viewer = mujoco.viewer.launch_passive(self.mj_model, self.mj_data)
+        self.mj_viewer = None
+        self.render = render
+        if self.render:
+            self.mj_viewer = mujoco.viewer.launch_passive(self.mj_model, self.mj_data)
         self.motion_loader = MotionLoader("env/motion_data/walk.npz", device="cpu")
 
         self.gravity_vector = torch.tensor([0.0, 0.0, -1.0]).float()
@@ -59,7 +62,7 @@ class MujocoEnv:
              300., 300., 300., 300., 300., 300., 300., 300., 300., 300., 300.]
         ).float()
 
-        self.kp = np.array(
+        self.kp = torch.as_tensor(
             [
                 200., 150., 150., 200.,  20.,  20., 200., 150., 150., 200.,  20.,
                 20., 200.,  40.,  40.,  40.,  40.,  40.,  40.,  40.,  40.,  40.,
@@ -67,19 +70,44 @@ class MujocoEnv:
             ]
         )
 
-        self.kd = np.array(
+        self.kd = torch.as_tensor(
             [
                 5.,  5.,  5.,  5.,  2.,  2.,  5.,  5.,  5.,  5.,  2.,  2.,  5.,
                 10., 10., 10., 10., 10., 10., 10., 10., 10., 10.
             ]
         )
 
-    def get_obs(self):
+        self.simulation_dt = simulation_dt
+        self.decimation = decimation
+        self.policy_dt = simulation_dt * decimation
+
+        self.n_steps = 0
+
+    def get_projected_gravity(self):
         base_quat = torch.from_numpy(self.mj_data.qpos[3:7]).float()
         projected_gravity = quat_rotate_inverse(base_quat, self.gravity_vector).float()
+
+        return projected_gravity
+    
+    def get_base_ang_vel(self):
         base_ang_vel = torch.from_numpy(self.mj_data.qvel[3:6]).float()
+        return base_ang_vel
+    
+    def get_joint_pos(self):
         joint_pos = torch.from_numpy(self.mj_data.qpos[7:]).float()[self.mujoco2isaac]
+        return joint_pos
+    
+    def get_joint_vel(self):
         joint_vel = torch.from_numpy(self.mj_data.qvel[6:]).float()[self.mujoco2isaac]
+
+        return joint_vel
+
+    def get_obs(self):
+        
+        projected_gravity = self.get_projected_gravity()
+        base_ang_vel = self.get_base_ang_vel()
+        joint_pos = self.get_joint_pos()
+        joint_vel = self.get_joint_vel()
 
         return torch.cat([
             base_ang_vel,
@@ -90,6 +118,7 @@ class MujocoEnv:
         ])
 
     def reset(self):
+        self.previous_action[:] = 0.0
         times = np.zeros(1)
 
         (
@@ -145,7 +174,32 @@ class MujocoEnv:
 
     def step(self, actions):
         step_start_time = time.perf_counter()
-
-        for _ in range(10):
+        self.previous_action = actions.clone()
+        for _ in range(self.decimation):
             self._apply_actions(actions)
             mujoco.mj_step(self.mj_model, self.mj_data)
+
+        if self.mj_viewer is not None and self.mj_viewer.is_running():
+            self.mj_viewer.sync()
+        else:
+            # viewer was closed manually -> stop touching it
+            self.mj_viewer = None
+
+        obs = self.get_obs()
+
+        time_until_next_step = self.policy_dt - (time.perf_counter() - step_start_time)
+        if time_until_next_step > 0:
+            time.sleep(time_until_next_step)
+
+        self.n_steps += 1
+
+        return obs
+    
+    def close(self):
+        if self.mj_viewer is not None:
+            try:
+                if self.mj_viewer.is_running():
+                    self.mj_viewer.close()
+            finally:
+                self.mj_viewer = None
+
