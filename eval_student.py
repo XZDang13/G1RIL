@@ -77,6 +77,7 @@ class Evaluator:
     def eval(self):
         obs, info = self.env.reset()
         
+        #'''
         default_obs = obs["default"]
         action = self.get_action(default_obs, True)
         next_obs, task_reward, terminate, timeout, info = self.env.step(action)
@@ -107,7 +108,7 @@ class Evaluator:
         print("pre action:")
         print(self.env.unwrapped.previous_actions[0])
         print("--------")
-        
+        #'''
         #print(obs["default"][0])
         #obs, info = self.rollout(obs, info)
 

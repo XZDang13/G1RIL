@@ -34,7 +34,7 @@ obs = env.reset()
 for _ in range(500):
     action = get_action(obs.to(device), True)
     #action = torch.zeros_like(action)
-    obs = env.step(action.cpu())
+    obs = env.step(action)
 '''
 
 obs = env.reset()

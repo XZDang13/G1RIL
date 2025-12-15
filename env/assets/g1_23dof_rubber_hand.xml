@@ -18,10 +18,6 @@
     </default>
   </default>
 
-  <option timestep='0.001' iterations='50' solver='PchachaGS' gravity='0 0 -9.81'>
-  </option>
-  <size njmax="500" nconmax="100" />
-
   <asset>
     <mesh name="pelvis" file="pelvis.STL"/>
     <mesh name="pelvis_contour_link" file="pelvis_contour_link.STL"/>
