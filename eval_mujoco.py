@@ -5,9 +5,6 @@ from RLAlg.normalizer import Normalizer
 
 from model import Actor
 
-
-env = MujocoEnv(1/3000, 50, True)
-
 device = torch.device("cuda:0")
 
 obs_normalizer = Normalizer((75,)).to(device)
@@ -29,9 +26,11 @@ def get_action(obs_batch:torch.Tensor, determine:bool=False):
     
     return action.cpu()
 
-'''
+env = MujocoEnv(1/3000, 50, True)
+
+#'''
 obs = env.reset()
-for _ in range(500):
+for _ in range(5000):
     action = get_action(obs.to(device), True)
     #action = torch.zeros_like(action)
     obs = env.step(action)

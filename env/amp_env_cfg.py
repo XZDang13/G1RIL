@@ -8,7 +8,7 @@ from isaaclab.utils import configclass
 from isaaclab.assets import ArticulationCfg
 from isaaclab.managers import EventTermCfg as EventTerm
 from isaaclab.managers import SceneEntityCfg
-
+from isaaclab.utils.noise import AdditiveUniformNoiseCfg as Unoise
 from .G1_23_DOF_CFG import G1_CFG
 
 @configclass
@@ -20,9 +20,9 @@ class EventCfg:
         mode="startup",
         params={
             "asset_cfg": SceneEntityCfg("robot", body_names=".*"),
-            "static_friction_range": (0.7, 1.3),
-            "dynamic_friction_range": (0.7, 1.3),
-            "restitution_range": (1.0, 1.0),
+            "static_friction_range": (0.3, 1.7),
+            "dynamic_friction_range": (0.3, 1.7),
+            "restitution_range": (0.0, 1.0),
             "num_buckets": 64,
         },
     )
@@ -167,6 +167,7 @@ class G1DanceEnvCfg(G1AMPEnvCfg):
 @configclass
 class G1WalkTrainingEnvCfg(G1WalkEnvCfg):
     events: EventCfg = EventCfg()
+    #pass
 
 @configclass
 class G1WalkEvaluatingEnvCfg(G1WalkEnvCfg):

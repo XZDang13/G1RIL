@@ -31,6 +31,7 @@ from env.amp_env_cfg import G1WalkTrainingEnvCfg
 class Trainer:
     def __init__(self):
         self.cfg = G1WalkTrainingEnvCfg()
+        self.cfg.add_privilege_obs_noise=False
         self.env_name = "G1AMP-v0"
 
         self.env = gymnasium.make(self.env_name, cfg=self.cfg)
@@ -251,7 +252,7 @@ class Trainer:
                 return_batch = batch["returns"].to(self.device)
                 advantage_batch = batch["advantages"].to(self.device)
 
-                obs_batch = self.obs_normalizer(obs_batch)
+                obs_batch = self.obs_normalizer(obs_batch, i==0)
 
                 policy_loss_dict = PPO.compute_policy_loss(self.actor,
                                                            log_prob_batch,
@@ -313,13 +314,11 @@ class Trainer:
                 d_loss_fake = d_loss_dict["loss_fake"]
                 d_loss_gp = d_loss_dict["gradient_penalty"]
 
-                weighted_d_loss = d_loss * 5.0
+                weighted_d_loss = d_loss
 
                 self.d_optimizer.zero_grad(set_to_none=True)
                 weighted_d_loss.backward()
                 self.d_optimizer.step()
-
-                
 
                 policy_loss_buffer.append(policy_loss.item())
                 value_loss_buffer.append(value_loss.item())
@@ -354,7 +353,7 @@ class Trainer:
 
     def train(self):
         obs, _ = self.env.reset()
-        for epoch in trange(1000):
+        for epoch in trange(2000):
             obs = self.rollout(obs)
             self.update()
         self.env.close()

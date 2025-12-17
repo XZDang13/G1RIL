@@ -23,11 +23,8 @@ class G1AMPEnv(DirectRLEnv):
         self.action_offset = 0.5 * (dof_upper_limits + dof_lower_limits)
         self.action_scale = 0.5 * (dof_upper_limits - dof_lower_limits)
 
-        #print(self.robot.data.joint_stiffness)
-        #print(self.robot.data.joint_damping)
-
-        #print(self.robot.data.joint_names)
-        #self.action_scale = .5
+        #print(self.robot.data.default_joint_stiffness[0])
+        #print(self.robot.data.default_joint_damping[0])
 
         key_body_names = [
             "torso_link",
@@ -77,10 +74,11 @@ class G1AMPEnv(DirectRLEnv):
         light_cfg.func("/World/Light", light_cfg)
 
     def _pre_physics_step(self, actions: torch.Tensor):
-        
         self.actions = actions.clone()
 
         self.target_pos = self.action_scale * self.actions + self.action_offset
+        if self.cfg.add_action_noise:
+            self.target_pos += torch.rand_like(self.target_pos) * 0.05
         #self.tau = self.pd_control()
 
     def _apply_action(self):
