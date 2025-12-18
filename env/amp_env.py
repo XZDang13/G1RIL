@@ -23,6 +23,7 @@ class G1AMPEnv(DirectRLEnv):
         self.action_offset = 0.5 * (dof_upper_limits + dof_lower_limits)
         self.action_scale = 0.5 * (dof_upper_limits - dof_lower_limits)
 
+        print(self.robot.data.joint_names)
         #print(self.robot.data.default_joint_stiffness[0])
         #print(self.robot.data.default_joint_damping[0])
 

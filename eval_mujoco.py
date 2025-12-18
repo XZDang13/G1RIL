@@ -26,9 +26,9 @@ def get_action(obs_batch:torch.Tensor, determine:bool=False):
     
     return action.cpu()
 
-env = MujocoEnv(1/3000, 50, True)
+env = MujocoEnv(1/3000, 50, False)
 
-#'''
+'''
 obs = env.reset()
 for _ in range(5000):
     action = get_action(obs.to(device), True)
@@ -37,6 +37,10 @@ for _ in range(5000):
 '''
 
 obs = env.reset()
+
+print("joint pos:")
+print(env.get_joint_pos()[env.isaac2mujoco])
+
 actions = get_action(obs.to(device), True)
 next_obs = env.step(actions)
 
