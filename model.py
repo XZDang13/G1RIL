@@ -11,11 +11,12 @@ class Actor(nn.Module):
         super().__init__()
 
         self.encoder = nn.Sequential(
-            MLPLayer(obs_dim, 1024, nn.SiLU(), True),
-            MLPLayer(1024, 512, nn.SiLU(), True),
+            MLPLayer(obs_dim, 512, nn.SiLU(), True),
+            MLPLayer(512, 512, nn.SiLU(), True),
+            MLPLayer(512, 512, nn.SiLU(), True),
         )
 
-        self.head = GaussianHead(512, action_dim, log_std=-2.9, learnable_log_std=True, max_action=1.0)
+        self.head = GaussianHead(512, action_dim, log_std=-2.9, learnable_log_std=False, max_action=1.0)
 
     def forward(self, obs:torch.Tensor, action:torch.Tensor|None=None) -> StochasticContinuousPolicyStep:
         x = self.encoder(obs)
@@ -28,8 +29,9 @@ class Critic(nn.Module):
         super().__init__()
 
         self.encoder = nn.Sequential(
-            MLPLayer(obs_dim, 1024, nn.SiLU(), True),
-            MLPLayer(1024, 512, nn.SiLU(), True),
+            MLPLayer(obs_dim, 512, nn.SiLU(), True),
+            MLPLayer(512, 512, nn.SiLU(), True),
+            MLPLayer(512, 512, nn.SiLU(), True),
         )
 
         self.head = CriticHead(512)
@@ -45,8 +47,9 @@ class Discriminator(nn.Module):
         super().__init__()
 
         self.encoder = nn.Sequential(
-            MLPLayer(obs_dim, 1024, nn.LeakyReLU(0.02), False),
-            MLPLayer(1024, 512, nn.LeakyReLU(0.02), False),
+            MLPLayer(obs_dim, 512, nn.LeakyReLU(0.02), False),
+            MLPLayer(512, 512, nn.LeakyReLU(0.02), False),
+            MLPLayer(512, 512, nn.LeakyReLU(0.02), False),
         )
 
         self.head = CriticHead(512)

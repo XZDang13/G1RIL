@@ -66,10 +66,10 @@ class Trainer:
                  "weight_decay":1e-4,
                  "name": "discriminator"},
                 {'params': self.discriminator.head.parameters(),
-                 "weight_decay":5e-2,
+                 "weight_decay":1e-2,
                  "name": "discriminator_head"},
             ],
-            lr=5e-5
+            lr=5e-5, betas=(0.5, 0.999)
         )
         
         self.steps = 20
@@ -176,7 +176,7 @@ class Trainer:
             obs = next_obs
 
             step_info = {}
-            step_info['step/mean_reward'] = disc_reward.mean().item()
+            step_info['step/mean_disc_reward'] = disc_reward.mean().item()
             step_info['step/mean_logit'] = logit.mean().item()
                 
             WandbLogger.log_metrics(step_info, self.global_step)
@@ -278,7 +278,6 @@ class Trainer:
                                                         expert_motion_batch,
                                                         agent_motion_batch,
                                                         label_smoothing=0.2,
-                                                        one_sided_smoothing=True,
                                                         r1_gamma=5.0)
                 
                 d_loss = d_loss_dict["loss"]
@@ -286,7 +285,7 @@ class Trainer:
                 d_loss_fake = d_loss_dict["loss_fake"]
                 d_loss_gp = d_loss_dict["gradient_penalty"]
 
-                weighted_d_loss = d_loss
+                weighted_d_loss = d_loss * 1.0
 
                 self.d_optimizer.zero_grad(set_to_none=True)
                 weighted_d_loss.backward()
@@ -325,7 +324,7 @@ class Trainer:
 
     def train(self):
         obs, _ = self.env.reset()
-        for epoch in trange(2000):
+        for epoch in trange(1000):
             obs = self.rollout(obs)
             self.update()
         self.env.close()

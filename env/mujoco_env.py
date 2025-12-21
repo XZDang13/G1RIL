@@ -135,7 +135,7 @@ class MujocoEnv:
         body_angular_velocities = body_angular_velocities.squeeze(0).numpy()
 
         root_pos = body_positions[0]
-        root_pos[2] += 0.05
+        #root_pos[2] += 0.05
         root_quat = body_rotations[0]
         root_linear_vel = body_linear_velocities[0]
         root_ang_vel = body_angular_velocities[0]

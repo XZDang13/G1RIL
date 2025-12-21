@@ -82,7 +82,7 @@ G1_CFG = ArticulationCfg(
                     ".*_ankle_pitch_joint": 1.814445687,
                     ".*_ankle_roll_joint": 1.814445687,
                 },
-                friction=0.0,
+                friction=0.003,
                 armature={
                     ".*_hip_yaw_joint": 0.010177520,
                     ".*_hip_roll_joint": 0.025101925,
@@ -108,7 +108,7 @@ G1_CFG = ArticulationCfg(
                 damping={
                     "waist_yaw_joint": 2.557889765,
                 },
-                friction=0.0,
+                friction=0.003,
                 armature={
                     "waist_yaw_joint": 0.007219450,
                 },
@@ -149,7 +149,7 @@ G1_CFG = ArticulationCfg(
                     ".*_elbow_joint": 0.907222843,
                     ".*_wrist_.*": 0.907222843,
                 },
-                friction=0.0,
+                friction=0.003,
                 armature={
                     ".*_shoulder_pitch_joint": 0.003609725,
                     ".*_shoulder_roll_joint": 0.003609725,

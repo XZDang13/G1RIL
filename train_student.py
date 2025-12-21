@@ -67,10 +67,10 @@ class Trainer:
                  "weight_decay":1e-4,
                  "name": "discriminator"},
                 {'params': self.discriminator.head.parameters(),
-                 "weight_decay":5e-2,
+                 "weight_decay":1e-2,
                  "name": "discriminator_head"},
             ],
-            lr=5e-5
+            lr=5e-5, betas=(0.5, 0.999)
         )
 
         self.teacher_actor = Actor(privilege_obs_dim, action_dim).to(self.device)
@@ -153,9 +153,9 @@ class Trainer:
     def get_discriminator_reward(self, motion_obs_batch: torch.Tensor) -> torch.Tensor:
         motion_obs_batch = self.motion_normalizer(motion_obs_batch)
         disc_step:ValueStep = self.discriminator(motion_obs_batch)
-        rewards = -torch.log(torch.maximum(1 - 1 / (1 + torch.exp(-disc_step.value)),
-                                            torch.tensor(0.0001, device=self.device)))
-        #rewards = torch.nn.functional.softplus(disc_step.value)
+        #rewards = -torch.log(torch.maximum(1 - 1 / (1 + torch.exp(-disc_step.value)),
+        #                                    torch.tensor(0.0001, device=self.device)))
+        rewards = torch.nn.functional.softplus(disc_step.value)
         return rewards, disc_step.value
     
     @torch.no_grad()
@@ -306,7 +306,6 @@ class Trainer:
                                                 expert_motion_batch,
                                                 agent_motion_batch,
                                                 label_smoothing=0.2,
-                                                one_sided_smoothing=True,
                                                 r1_gamma=5.0)
                 
                 d_loss = d_loss_dict["loss"]
@@ -353,7 +352,7 @@ class Trainer:
 
     def train(self):
         obs, _ = self.env.reset()
-        for epoch in trange(2000):
+        for epoch in trange(1000):
             obs = self.rollout(obs)
             self.update()
         self.env.close()

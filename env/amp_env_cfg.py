@@ -11,6 +11,15 @@ from isaaclab.managers import SceneEntityCfg
 from isaaclab.utils.noise import AdditiveUniformNoiseCfg as Unoise
 from .G1_23_DOF_CFG import G1_CFG
 
+VELOCITY_RANGE = {
+    "x": (-0.5, 0.5),
+    "y": (-0.5, 0.5),
+    "z": (-0.2, 0.2),
+    "roll": (-0.52, 0.52),
+    "pitch": (-0.52, 0.52),
+    "yaw": (-0.78, 0.78),
+}
+
 @configclass
 class EventCfg:
     """Configuration for randomization."""
@@ -20,9 +29,9 @@ class EventCfg:
         mode="startup",
         params={
             "asset_cfg": SceneEntityCfg("robot", body_names=".*"),
-            "static_friction_range": (0.3, 1.7),
-            "dynamic_friction_range": (0.3, 1.7),
-            "restitution_range": (0.0, 1.0),
+            "static_friction_range": (0.3, 1.6),
+            "dynamic_friction_range": (0.3, 1.2),
+            "restitution_range": (0.0, 0.5),
             "num_buckets": 64,
         },
     )
@@ -46,12 +55,12 @@ class EventCfg:
         },
     )
     
-    robot_mass_com = EventTerm(
+    base_com = EventTerm(
         func=mdp.randomize_rigid_body_com,
         mode="startup",
         params={
-            "asset_cfg": SceneEntityCfg("robot", body_names=["pelvis", "torso_link"]),
-            "com_range": {"x": (-0.1, 0.1), "y": (-0.1, 0.1), "z": (-0.1, 0.1)},
+            "asset_cfg": SceneEntityCfg("robot", body_names="torso_link"),
+            "com_range": {"x": (-0.025, 0.025), "y": (-0.05, 0.05), "z": (-0.05, 0.05)},
         },
     )
      
@@ -82,8 +91,8 @@ class EventCfg:
     push_robot = EventTerm(
         func=mdp.push_by_setting_velocity,
         mode="interval",
-        interval_range_s=(5.0, 10.0),
-        params={"velocity_range": {"x": (-1.0, 1.0), "y": (-1.0, 1.0)}},
+        interval_range_s=(1.0, 3.0),
+        params={"velocity_range": VELOCITY_RANGE},
     )
 
 @configclass
