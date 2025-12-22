@@ -177,6 +177,7 @@ class G1AMPEnv(DirectRLEnv):
         self.motion_buffer[env_ids] = motion_observations.view(num_samples, self.cfg.motion_buffer_size, -1)
 
         self.target_positions = self.robot.data.joint_pos.clone()
+        print(self.target_positions)
     
     def collect_expert_motion(self, num_samples: int, current_times: np.ndarray | None = None):
         if current_times is None:

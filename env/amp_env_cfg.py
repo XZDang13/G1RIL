@@ -162,6 +162,15 @@ class G1WalkEnvCfg(G1AMPEnvCfg):
     motion_space = 98
     motion_buffer_size = 2
     motion_observation_space = motion_space * motion_buffer_size
+
+@configclass
+class G1JabEnvCfg(G1AMPEnvCfg):
+    expert_motion_file = "env/motion_data/jab.npz"
+    observation_space = 75
+    privilege_observation_space = 98
+    motion_space = 98
+    motion_buffer_size = 2
+    motion_observation_space = motion_space * motion_buffer_size
     
 @configclass
 class G1DanceEnvCfg(G1AMPEnvCfg):
@@ -180,6 +189,18 @@ class G1WalkTrainingEnvCfg(G1WalkEnvCfg):
 
 @configclass
 class G1WalkEvaluatingEnvCfg(G1WalkEnvCfg):
+    training = False
+    add_default_obs_noise = False
+    add_privilege_obs_noise = False
+    add_action_noise = False
+
+@configclass
+class G1JabTrainingEnvCfg(G1JabEnvCfg):
+    events: EventCfg = EventCfg()
+    #pass
+
+@configclass
+class G1JabEvaluatingEnvCfg(G1JabEnvCfg):
     training = False
     add_default_obs_noise = False
     add_privilege_obs_noise = False

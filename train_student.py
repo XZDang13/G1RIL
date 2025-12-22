@@ -46,9 +46,10 @@ class Trainer:
         self.device = self.env.unwrapped.device
 
         self.actor = Actor(default_obs_dim, action_dim).to(self.device)
-        self.critic = Critic(default_obs_dim).to(self.device)
+        self.critic = Critic(privilege_obs_dim).to(self.device)
         self.discriminator = Discriminator(motion_dim).to(self.device)
-        self.obs_normalizer = Normalizer((default_obs_dim,)).to(self.device)
+        self.actor_obs_normalizer = Normalizer((default_obs_dim,)).to(self.device)
+        self.critic_obs_normalizer = Normalizer((privilege_obs_dim,)).to(self.device)
         self.motion_normalizer = Normalizer((motion_dim,)).to(self.device)
 
         self.ac_optimizer = torch.optim.Adam(
@@ -90,6 +91,7 @@ class Trainer:
         )
 
         self.batch_keys = ["observations",
+                           "privilege_observations",
                            "actions",
                            "log_probs",
                            "rewards",
@@ -99,6 +101,7 @@ class Trainer:
                         ]
 
         self.rollout_buffer.create_storage_space("observations", (default_obs_dim,), torch.float32)
+        self.rollout_buffer.create_storage_space("privilege_observations", (privilege_obs_dim,), torch.float32)
         self.rollout_buffer.create_storage_space("actions", (action_dim,), torch.float32)
         self.rollout_buffer.create_storage_space("log_probs", (), torch.float32)
         self.rollout_buffer.create_storage_space("rewards", (), torch.float32)
@@ -128,15 +131,16 @@ class Trainer:
         WandbLogger.init_project("AMP", f"G1_Walk")
         
     @torch.no_grad()
-    def get_action(self, obs_batch:torch.Tensor, determine:bool=False):
-        obs_batch = self.obs_normalizer(obs_batch)
-        actor_step:StochasticContinuousPolicyStep = self.actor(obs_batch)
+    def get_action(self, actorobs_batch:torch.Tensor, criticobs_batch:torch.Tensor, determine:bool=False):
+        actor_obs_batch = self.actor_obs_normalizer(actorobs_batch)
+        actor_step:StochasticContinuousPolicyStep = self.actor(actor_obs_batch)
         action = actor_step.action
         log_prob = actor_step.log_prob
         if determine:
             action = actor_step.mean
         
-        critic_step:ValueStep = self.critic(obs_batch)
+        critic_obs_batch = self.critic_obs_normalizer(criticobs_batch)
+        critic_step:ValueStep = self.critic(critic_obs_batch)
         value = critic_step.value
 
         return action, log_prob, value
@@ -173,18 +177,19 @@ class Trainer:
             self.global_step += 1
             default_obs = obs["default"]
             privilege_obs = obs["privilege"]
-            action, log_prob, value = self.get_action(default_obs)
+            action, log_prob, value = self.get_action(default_obs, privilege_obs)
             teacher_action = self.get_teacher_action(privilege_obs)
             next_obs, task_reward, terminate, timeout, info = self.env.step(action)
             motion_obs = next_obs["motion"]
             disc_reward, logit = self.get_discriminator_reward(motion_obs)
             teacher_reward = self.get_teacher_reward(teacher_action, action)
-            reward = task_reward * 0.0 + disc_reward * 2.0 + teacher_reward
+            reward = task_reward * 0.0 + disc_reward * 2.0 + teacher_reward * 1.0
             #reward = task_reward
             done = terminate | timeout
             
             records = {
                 "observations": default_obs,
+                "privilege_observations": privilege_obs,
                 "actions": action,
                 "log_probs": log_prob,
                 "rewards": reward,
@@ -210,7 +215,8 @@ class Trainer:
             WandbLogger.log_metrics(step_info, self.global_step)
 
         last_default_obs = obs["default"]
-        _, _, last_value = self.get_action(last_default_obs)
+        last_privilege_obs = obs["privilege"]
+        _, _, last_value = self.get_action(last_default_obs, last_privilege_obs)
         returns, advantages = compute_gae(
             self.rollout_buffer.data["rewards"],
             self.rollout_buffer.data["values"],
@@ -246,13 +252,15 @@ class Trainer:
         for i in range(5):
             for batch in self.rollout_buffer.sample_batchs(self.batch_keys, 4096*10):
                 obs_batch = batch["observations"].to(self.device)
+                privilege_obs_batch = batch["privilege_observations"].to(self.device)
                 action_batch = batch["actions"].to(self.device)
                 log_prob_batch = batch["log_probs"].to(self.device)
                 value_batch = batch["values"].to(self.device)
                 return_batch = batch["returns"].to(self.device)
                 advantage_batch = batch["advantages"].to(self.device)
 
-                obs_batch = self.obs_normalizer(obs_batch, i==0)
+                obs_batch = self.actor_obs_normalizer(obs_batch, i==0)
+                privilege_obs_batch = self.critic_obs_normalizer(privilege_obs_batch, i==0)
 
                 policy_loss_dict = PPO.compute_policy_loss(self.actor,
                                                            log_prob_batch,
@@ -267,7 +275,7 @@ class Trainer:
                 kl_divergence = policy_loss_dict["kl_divergence"]
 
                 value_loss_dict = PPO.compute_clipped_value_loss(self.critic,
-                                                    obs_batch,
+                                                    privilege_obs_batch,
                                                     value_batch,
                                                     return_batch,
                                                     0.2)
@@ -313,7 +321,7 @@ class Trainer:
                 d_loss_fake = d_loss_dict["loss_fake"]
                 d_loss_gp = d_loss_dict["gradient_penalty"]
 
-                weighted_d_loss = d_loss
+                weighted_d_loss = d_loss * 1.0
 
                 self.d_optimizer.zero_grad(set_to_none=True)
                 weighted_d_loss.backward()
@@ -358,7 +366,7 @@ class Trainer:
         self.env.close()
 
         torch.save(
-            [self.obs_normalizer.state_dict(), self.actor.state_dict(), self.critic.state_dict()],
+            [self.actor_obs_normalizer.state_dict(), self.actor.state_dict(), self.critic.state_dict()],
             "student_weight.pth"
         )
 

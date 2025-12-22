@@ -60,17 +60,20 @@ class Evaluator:
     
     def rollout(self, obs, info):
         length = 0
-
-        for i in range(5000):
+        logs = []
+        for i in range(200):
             privilege_obs = obs["privilege"]
             action = self.get_action(privilege_obs, True)
             #print(action)
             #action = torch.zeros_like(action)  # for testing, use zero action
             next_obs, task_reward, terminate, timeout, info = self.env.step(action)
+            logs.append(self.env.unwrapped.target_pos[0].cpu())
 
             length += 1
 
             obs = next_obs
+
+        torch.save(logs, "actions_replay.pt")
 
         return obs, info
 

@@ -88,7 +88,7 @@ class ObservationManager:
 
         angular_velocity_noise = get_noise(angular_velocity, 0.3)
         gravity_oritation_noise = get_noise(gravity_oritation, 0.05)
-        dof_position_noise = get_noise(dof_position, 0.01)
+        dof_position_noise = get_noise(dof_position, 0.05)
         dof_velocity_noise = get_noise(dof_velocity, 0.5)
         previous_action_noise = get_noise(previous_action, 0.0)
 

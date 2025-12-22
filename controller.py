@@ -14,6 +14,23 @@ from unitree_sdk2py.idl.unitree_go.msg.dds_ import LowState_ as LowStateGo
 from unitree_sdk2py.utils.crc import CRC
 
 from config import G1Config
+from model import Actor
+from RLAlg.normalizer import Normalizer
+from RLAlg.nn.steps import StochasticContinuousPolicyStep
+
+def get_gravity_orientation(quaternion):
+    qw = quaternion[0]
+    qx = quaternion[1]
+    qy = quaternion[2]
+    qz = quaternion[3]
+
+    gravity_orientation = np.zeros(3)
+
+    gravity_orientation[0] = 2 * (-qz * qx + qw * qy)
+    gravity_orientation[1] = -2 * (qz * qy + qw * qx)
+    gravity_orientation[2] = 1 - 2 * (qw * qw + qz * qz)
+
+    return gravity_orientation
 
 class MotorMode:
     PR = 0  # Series Control for Pitch/Roll Joints
@@ -94,6 +111,35 @@ class Controller:
         self.config = G1Config()
         self.remote_controller = RemoteController()
 
+        self.device = torch.device("cuda:0")
+
+        self.obs_normalizer = Normalizer((75,)).to(self.device)
+        self.actor = Actor(75, 23).to(self.device)
+
+        normalizer_weights, actor_weights, _ = torch.load("student_weight.pth")
+        self.obs_normalizer.load_state_dict(normalizer_weights)
+        self.actor.load_state_dict(actor_weights)
+        self.obs_normalizer.eval()
+        self.actor.eval()
+
+        self.action_offset = torch.as_tensor(
+            [
+                0.1746,  0.1746,  0.0000,  1.2217, -1.2217, -0.2094, -0.2094,  0.0000,
+                0.0000,  0.3316, -0.3316,  1.3963,  1.3963,  0.0000,  0.0000, -0.1745,
+                -0.1745,  0.5236,  0.5236,  0.0000,  0.0000,  0.0000,  0.0000
+            ]
+        ).float()
+
+        self.action_scale = torch.as_tensor(
+            [
+                2.4347, 2.4347, 2.3562, 1.5708, 1.5708, 2.5918, 2.5918, 2.4818, 2.4818,
+                1.7279, 1.7279, 1.3352, 1.3352, 2.3562, 2.3562, 0.6283, 0.6283, 1.4137,
+                1.4137, 0.2356, 0.2356, 1.7750, 1.7750
+            ]
+        ).float()
+
+        self.replays = torch.load("actions_replay.pt")
+
         self.low_cmd = unitree_hg_msg_dds__LowCmd_()
         self.low_state = unitree_hg_msg_dds__LowState_()
         self.mode_pr_ = MotorMode.PR
@@ -104,6 +150,22 @@ class Controller:
 
         self.lowstate_subscriber = ChannelSubscriber("rt/lowstate", LowStateHG)
         self.lowstate_subscriber.Init(self.LowStateHgHandler, 10)
+
+        self.counter = 0
+        self.last_actions = np.zeros(len(self.config.policy_joints_order), dtype=np.float32)
+
+        self.wait_for_low_state()
+        init_cmd_hg(self.low_cmd, self.mode_machine_, self.mode_pr_)
+
+    @torch.no_grad()
+    def get_action(self, obs_batch:torch.Tensor, determine:bool=False):
+        obs_batch = self.obs_normalizer(obs_batch)
+        actor_step:StochasticContinuousPolicyStep = self.actor(obs_batch)
+        action = actor_step.action
+        if determine:
+            action = actor_step.mean
+        
+        return action.cpu()
 
     def LowStateHgHandler(self, msg: LowStateHG):
         self.low_state = msg
@@ -132,18 +194,21 @@ class Controller:
         # move time 2s
         total_time = 2
         num_step = int(total_time / self.config.control_dt)
-        
-        init_pos = {}
+
+        init_pos = {
+
+        }
 
         for idx, joint_name in enumerate(self.config.joints_settings.keys()):
-            init_pos[joint_name] = self.low_state[idx].q
+            init_pos[joint_name] = self.low_state.motor_state[idx].q
         
+
         # move to default pos
         for i in range(num_step):
             alpha = i / num_step
             for idx, joint_name in enumerate(self.config.joints_settings.keys()):
                 target_pos = self.config.init_state[joint_name]
-                self.low_cmd.motor_cmd[idx].q = init_pos[idx] * (1 - alpha) + target_pos * alpha
+                self.low_cmd.motor_cmd[idx].q = init_pos[joint_name] * (1 - alpha) + target_pos * alpha
                 self.low_cmd.motor_cmd[idx].qd = 0
                 self.low_cmd.motor_cmd[idx].kp = self.config.pd_params[joint_name][0]
                 self.low_cmd.motor_cmd[idx].kd = self.config.pd_params[joint_name][1]
@@ -164,8 +229,66 @@ class Controller:
             self.send_cmd(self.low_cmd)
             time.sleep(self.config.control_dt)
 
+    def get_target_pos(self):
+        joint_states = {}
+
+        for idx, joint_name in enumerate(self.config.joints_settings.keys()):
+            joint_states[joint_name] = (self.low_state.motor_state[idx].q, self.low_state.motor_state[idx].dq)
+
+        dof_pos = np.zeros(len(self.config.policy_joints_order), dtype=np.float32)
+        dof_vel = np.zeros(len(self.config.policy_joints_order), dtype=np.float32)
+        for idx, joint_name in enumerate(self.config.policy_joints_order):
+            dof_pos[idx] = joint_states[joint_name][0]
+            dof_vel[idx] = joint_states[joint_name][1]
+
+        quat = self.low_state.imu_state.quaternion
+        ang_vel = np.array(self.low_state.imu_state.gyroscope, dtype=np.float32)
+
+        gravity_orientation = get_gravity_orientation(quat)
+
+        gravity_orientation = torch.from_numpy(gravity_orientation).float()
+        ang_vel = torch.from_numpy(ang_vel).float()
+        dof_pos = torch.from_numpy(dof_pos).float()
+        dof_vel = torch.from_numpy(dof_vel).float()
+        last_action = torch.from_numpy(self.last_actions).float()
+
+        obs = torch.cat([
+            ang_vel,
+            gravity_orientation,
+            dof_pos,
+            dof_vel,
+            last_action,
+        ]).unsqueeze(0).to(self.device)
+
+        actions = self.get_action(obs, True).squeeze(0)
+        
+        self.last_actions = actions.numpy().copy()
+
+        target_pos = (self.action_offset + self.action_scale * actions).numpy()
+
+        cmd = {}
+
+        for idx, joint_name in enumerate(self.config.policy_joints_order):
+            cmd[joint_name] = target_pos[idx]
+
+        return cmd
+
     def run(self):
-        pass
+        cmd = self.get_target_pos()
+    
+        for idx, joint_name in enumerate(self.config.joints_settings.keys()):
+            if joint_name in cmd:
+                self.low_cmd.motor_cmd[idx].q = cmd[joint_name]
+                self.low_cmd.motor_cmd[idx].qd = 0
+                self.low_cmd.motor_cmd[idx].kp = self.config.pd_params[joint_name][0]
+                self.low_cmd.motor_cmd[idx].kd = self.config.pd_params[joint_name][1]
+                self.low_cmd.motor_cmd[idx].tau = 0
+
+        self.send_cmd(self.low_cmd)
+        time.sleep(self.config.control_dt)
+
+        self.counter += 1
+
 
 if __name__ == "__main__":
     import argparse
@@ -180,6 +303,7 @@ if __name__ == "__main__":
 
     controller = Controller()
 
+    controller.wait_for_low_state()
     controller.zero_torque_state()
 
     controller.move_to_default_pos()
